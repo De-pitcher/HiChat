@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+
 import '../../constants/app_theme.dart';
 import '../../constants/app_constants.dart';
+import '../../services/auth_state_manager.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -17,14 +20,12 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   final _emailFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
-  bool _rememberMe = false;
   bool _isPasswordVisible = false;
-  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _loadRememberMeData();
+    _loadRememberedCredentials();
   }
 
   @override
@@ -36,14 +37,16 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _loadRememberMeData() {
-    // TODO: Load saved email/password from SharedPreferences
-    // For now, just placeholder implementation
-  }
-
-  void _saveRememberMeData() {
-    // TODO: Save/remove email/password from SharedPreferences
-    // For now, just placeholder implementation
+  void _loadRememberedCredentials() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authManager = context.read<AuthStateManager>();
+      if (authManager.rememberMe && authManager.rememberedEmail.isNotEmpty) {
+        _emailController.text = authManager.rememberedEmail;
+        if (authManager.rememberedPassword.isNotEmpty) {
+          _passwordController.text = authManager.rememberedPassword;
+        }
+      }
+    });
   }
 
   @override
@@ -148,15 +151,19 @@ class _LoginScreenState extends State<LoginScreen> {
         keyboardType: TextInputType.emailAddress,
         textInputAction: TextInputAction.next,
         onFieldSubmitted: (_) => _passwordFocusNode.requestFocus(),
+        style: const TextStyle(
+          color: Colors.black,
+          fontSize: 16,
+        ),
         decoration: InputDecoration(
           hintText: 'Enter email',
           hintStyle: const TextStyle(
             color: Color(0xFFA8A8A8),
-            fontSize: 14,
+            fontSize: 16,
           ),
           filled: true,
           fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(color: Colors.grey.shade300),
@@ -176,7 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         validator: (value) {
           if (value == null || value.isEmpty) {
-            return 'Email is required';
+            return 'Please enter your email';
           }
           if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
             return 'Enter a valid email';
@@ -196,15 +203,19 @@ class _LoginScreenState extends State<LoginScreen> {
         obscureText: !_isPasswordVisible,
         textInputAction: TextInputAction.done,
         onFieldSubmitted: (_) => _handleSignIn(),
+        style: const TextStyle(
+          color: Colors.black,
+          fontSize: 16,
+        ),
         decoration: InputDecoration(
           hintText: 'Password',
           hintStyle: const TextStyle(
             color: Color(0xFFA8A8A8),
-            fontSize: 14,
+            fontSize: 16,
           ),
           filled: true,
           fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
           suffixIcon: IconButton(
             icon: Icon(
               _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
@@ -235,7 +246,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         validator: (value) {
           if (value == null || value.isEmpty) {
-            return 'Password is required';
+            return 'Please enter your password';
           }
           if (value.length < 6) {
             return 'Password must be at least 6 characters';
@@ -247,89 +258,97 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildRememberMe() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _rememberMe = !_rememberMe;
-              });
-            },
-            child: Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                color: _rememberMe ? AppColors.primary : Colors.transparent,
-                border: Border.all(
-                  color: AppColors.primary,
-                  width: 2,
+    return Consumer<AuthStateManager>(
+      builder: (context, authManager, child) {
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: () {
+                  authManager.updateRememberMe(!authManager.rememberMe);
+                },
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: authManager.rememberMe ? AppColors.primary : Colors.transparent,
+                    border: Border.all(
+                      color: AppColors.primary,
+                      width: 2,
+                    ),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: authManager.rememberMe
+                      ? const Icon(
+                          Icons.check,
+                          size: 16,
+                          color: Colors.white,
+                        )
+                      : null,
                 ),
-                borderRadius: BorderRadius.circular(4),
               ),
-              child: _rememberMe
-                  ? const Icon(
-                      Icons.check,
-                      size: 16,
-                      color: Colors.white,
-                    )
-                  : null,
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _rememberMe = !_rememberMe;
-              });
-            },
-            child: Text(
-              'Remember Me',
-              style: GoogleFonts.poppins(
-                fontSize: 12.82,
-                color: Colors.black,
-                fontWeight: FontWeight.normal,
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  authManager.updateRememberMe(!authManager.rememberMe);
+                },
+                child: Text(
+                  'Remember Me',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12.82,
+                    color: Colors.black,
+                    fontWeight: FontWeight.normal,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   Widget _buildSignInButton() {
-    return SizedBox(
-      width: 262,
-      height: 36,
-      child: ElevatedButton(
-        onPressed: _isLoading ? null : _handleSignIn,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          elevation: 0,
-          disabledBackgroundColor: AppColors.primary.withOpacity(0.6),
-        ),
-        child: _isLoading
-            ? SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
-            : Text(
-                'Sign in',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
+    return Consumer<AuthStateManager>(
+      builder: (context, authManager, child) {
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeInOut,
+          child: SizedBox(
+            width: 262,
+            height: 52,
+            child: ElevatedButton(
+            onPressed: authManager.isLoading ? null : _handleSignIn,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
               ),
-      ),
+              elevation: 0,
+              disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.6),
+            ),
+            child: authManager.isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : Text(
+                    'Sign in',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -365,39 +384,40 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    final authManager = context.read<AuthStateManager>();
+    
+    final result = await authManager.login(
+      _emailController.text.trim(),
+      _passwordController.text,
+      rememberMe: authManager.rememberMe,
+    );
 
-    // Handle Remember Me
-    _saveRememberMeData();
-
-    try {
-      // TODO: Implement actual API call
-      // For now, simulate API call
-      await Future.delayed(const Duration(seconds: 2));
-
-      // Mock success - navigate to chat list
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, AppConstants.chatListRoute);
-      }
-    } catch (e) {
-      // Show error message
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Sign in failed: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+    if (mounted) {
+      if (result.isSuccess) {
+        // AuthWrapper will automatically handle navigation to chat list
+        // when auth state changes - just go back to root
+        Navigator.popUntil(context, (route) => route.isFirst);
+      } else {
+        // Show error message
+        _showErrorSnackBar(result.errorMessage ?? 'Login failed');
       }
     }
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'Dismiss',
+          textColor: Colors.white,
+          onPressed: () {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          },
+        ),
+      ),
+    );
   }
 }

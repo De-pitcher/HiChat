@@ -70,16 +70,16 @@ class Chat {
   bool get hasUnreadMessages => unreadCount > 0;
 
   // Get the other user in a direct chat
-  User? getOtherUser(String currentUserId) {
+  User? getOtherUser(dynamic currentUserId) {
     if (!isDirectChat) return null;
     return participants.firstWhere(
-      (user) => user.id != currentUserId,
+      (user) => user.id.toString() != currentUserId.toString(),
       orElse: () => throw Exception('Other user not found in direct chat'),
     );
   }
 
   // Get display name for the chat
-  String getDisplayName(String currentUserId) {
+  String getDisplayName(dynamic currentUserId) {
     if (isGroupChat) return name;
     
     final otherUser = getOtherUser(currentUserId);
@@ -87,7 +87,7 @@ class Chat {
   }
 
   // Get display image for the chat
-  String? getDisplayImage(String currentUserId) {
+  String? getDisplayImage(dynamic currentUserId) {
     if (isGroupChat) return groupImageUrl;
     
     final otherUser = getOtherUser(currentUserId);

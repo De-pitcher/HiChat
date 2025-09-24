@@ -186,19 +186,19 @@ class ChatService {
     // Mock search results
     return [
       User(
-        id: 'user1',
+        id: 1,
         username: 'john_doe',
         email: 'john@example.com',
         isOnline: true,
         createdAt: DateTime.now().subtract(const Duration(days: 30)),
       ),
       User(
-        id: 'user2',
+        id: 2,
         username: 'alice_smith',
         email: 'alice@example.com',
         isOnline: false,
         lastSeen: DateTime.now().subtract(const Duration(hours: 2)),
-        createdAt: DateTime.now().subtract(const Duration(days: 60)),
+        createdAt: DateTime.now().subtract(const Duration(days: 15)),
       ),
     ].where((user) => 
       user.username.toLowerCase().contains(query.toLowerCase()) ||
@@ -245,7 +245,7 @@ class ChatService {
         participantIds: ['user1', 'currentUser'],
         participants: [
           User(
-            id: 'user1',
+            id: 1,
             username: 'John Doe',
             email: 'john@example.com',
             isOnline: true,
@@ -270,7 +270,7 @@ class ChatService {
         participantIds: ['user2', 'user3', 'currentUser'],
         participants: [
           User(
-            id: 'user2',
+            id: 2,
             username: 'Alice Smith',
             email: 'alice@example.com',
             isOnline: false,
@@ -278,7 +278,7 @@ class ChatService {
             createdAt: now.subtract(const Duration(days: 60)),
           ),
           User(
-            id: 'user3',
+            id: 3,
             username: 'Bob Johnson',
             email: 'bob@example.com',
             isOnline: true,

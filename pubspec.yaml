@@ -37,6 +37,15 @@ dependencies:
   
   # Google Fonts for custom typography
   google_fonts: ^4.0.4
+  
+  # HTTP client for API calls
+  http: ^1.1.0
+  
+  # Shared preferences for storing user data
+  shared_preferences: ^2.2.2
+  
+  # State management with Provider
+  provider: ^6.1.1
 
 dev_dependencies:
   flutter_test:
@@ -48,6 +57,15 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+  
+  # Mocking library for unit tests
+  mockito: ^5.4.2
+  
+  # HTTP mocking for testing
+  http_mock_adapter: ^0.6.0
+  
+  # Code generation for mocks
+  build_runner: ^2.4.7
   
   # Package for generating app launcher icons
   flutter_launcher_icons: ^0.13.1

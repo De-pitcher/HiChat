@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../models/chat.dart';
 import '../../models/user.dart';
 import '../../models/message.dart';
 import '../../constants/app_theme.dart';
+import '../../services/auth_state_manager.dart';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -57,7 +59,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         participantIds: ['user1', 'currentUser'],
         participants: [
           User(
-            id: 'user1',
+            id: 1,
             username: 'John Doe',
             email: 'john@example.com',
             isOnline: true,
@@ -82,7 +84,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         participantIds: ['user2', 'user3', 'currentUser'],
         participants: [
           User(
-            id: 'user2',
+            id: 2,
             username: 'Alice Smith',
             email: 'alice@example.com',
             isOnline: false,
@@ -90,7 +92,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
             createdAt: now.subtract(const Duration(days: 60)),
           ),
           User(
-            id: 'user3',
+            id: 3,
             username: 'Bob Johnson',
             email: 'bob@example.com',
             isOnline: true,
@@ -115,6 +117,71 @@ class _ChatListScreenState extends State<ChatListScreen> {
     Navigator.of(context).pushNamed('/chat', arguments: chat);
   }
 
+  void _handleLogout() async {
+    // Show confirmation dialog
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout == true && mounted) {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Logging out...'),
+            ],
+          ),
+        ),
+      );
+
+      try {
+        // Logout using AuthStateManager
+        await context.read<AuthStateManager>().logout();
+        
+        if (mounted) {
+          // Pop the loading dialog
+          Navigator.pop(context);
+          
+          // The AuthWrapper will automatically redirect to WelcomeScreen
+          // when the auth state changes - just pop back to root
+          Navigator.popUntil(context, (route) => route.isFirst);
+        }
+      } catch (e) {
+        if (mounted) {
+          // Pop the loading dialog
+          Navigator.pop(context);
+          
+          // Show error message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Logout failed: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -137,7 +204,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   // TODO: Navigate to settings screen
                   break;
                 case 'logout':
-                  Navigator.of(context).pushReplacementNamed('/login');
+                  _handleLogout();
                   break;
               }
             },
@@ -187,9 +254,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     itemCount: _chats.length,
                     itemBuilder: (context, index) {
                       final chat = _chats[index];
-                      return _ChatListItem(
-                        chat: chat,
-                        onTap: () => _navigateToChat(chat),
+                      return AnimatedContainer(
+                        duration: Duration(milliseconds: 300 + (index * 50)),
+                        curve: Curves.easeOutCubic,
+                        child: _ChatListItem(
+                          chat: chat,
+                          onTap: () => _navigateToChat(chat),
+                        ),
                       );
                     },
                   ),
@@ -198,6 +269,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
         onPressed: () {
           // TODO: Navigate to new chat screen
         },
+        heroTag: "new_chat_fab",
+        elevation: 6,
         child: const Icon(Icons.add),
       ),
     );
@@ -217,7 +290,14 @@ class _ChatListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     const currentUserId = 'currentUser'; // TODO: Get from auth service
     
-    return ListTile(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       leading: CircleAvatar(
         backgroundColor: AppColors.primary,
         child: chat.getDisplayImage(currentUserId) != null
@@ -295,6 +375,7 @@ class _ChatListItem extends StatelessWidget {
         ],
       ),
       onTap: onTap,
+      ),
     );
   }
 

@@ -35,7 +35,7 @@ class AuthService {
 
     // For demo purposes, accept any valid email/password
     _currentUser = User(
-      id: 'currentUser',
+      id: 0,
       username: email.split('@')[0],
       email: email,
       isOnline: true,
@@ -75,7 +75,7 @@ class AuthService {
 
     // For demo purposes, create a new user
     final user = User(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: DateTime.now().millisecondsSinceEpoch,
       username: username,
       email: email,
       isOnline: true,
@@ -110,7 +110,7 @@ class AuthService {
     
     _currentUser = _currentUser!.copyWith(
       username: username ?? _currentUser!.username,
-      profileImageUrl: profileImageUrl ?? _currentUser!.profileImageUrl,
+      imageUrl: profileImageUrl ?? _currentUser!.imageUrl,
     );
   }
 
