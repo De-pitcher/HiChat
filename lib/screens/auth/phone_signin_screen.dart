@@ -5,6 +5,7 @@ import 'package:country_code_picker/country_code_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../constants/app_constants.dart';
 import '../../services/api_service.dart';
+import '../../services/firebase_phone_auth_service.dart';
 
 class PhoneSignInScreen extends StatefulWidget {
   const PhoneSignInScreen({super.key});
@@ -24,6 +25,7 @@ class _PhoneSignInScreenState extends State<PhoneSignInScreen> {
   // Services
   late ApiService _apiService;
   late SharedPreferences _sharedPreferences;
+  final FirebasePhoneAuthService _firebasePhoneAuth = FirebasePhoneAuthService();
 
   @override
   void initState() {
@@ -399,24 +401,42 @@ class _PhoneSignInScreenState extends State<PhoneSignInScreen> {
       // Save remember me setting
       _saveRememberedPhone();
       
-      // Check if phone number exists via API
-      final phoneExists = await _checkPhoneNumber(fullPhoneNumber);
+      // Send OTP using Firebase Phone Auth
+      final otpSent = await _firebasePhoneAuth.sendOTP(
+        phoneNumber: fullPhoneNumber,
+        onSuccess: (message) {
+          debugPrint('OTP sent successfully: $message');
+        },
+        onError: (error) {
+          if (mounted) {
+            _showError(error);
+          }
+        },
+        onCodeSent: (verificationId) {
+          debugPrint('Verification ID received: $verificationId');
+        },
+        onAutoVerificationCompleted: (credential) async {
+          // Handle auto-verification (rare on most devices)
+          debugPrint('Auto-verification completed');
+          await _handleAutoVerification(credential, fullPhoneNumber);
+        },
+      );
       
-      // Navigate to OTP verification screen
-      if (mounted) {
+      if (otpSent && mounted) {
+        // Navigate to OTP verification screen
         Navigator.pushNamed(
           context,
           AppConstants.otpVerificationRoute,
           arguments: {
             'phone_number': fullPhoneNumber,
-            'password': fullPhoneNumber, // As per Java code logic
-            'is_phone_exist': phoneExists,
+            'password': fullPhoneNumber, // Keep for backward compatibility
+            'is_phone_exist': true, // Will be determined after OTP verification
           },
         );
       }
     } catch (e) {
       if (mounted) {
-        _showError('Failed to verify phone number: $e');
+        _showError('Failed to send OTP: $e');
       }
     } finally {
       if (mounted) {
@@ -427,19 +447,32 @@ class _PhoneSignInScreenState extends State<PhoneSignInScreen> {
     }
   }
 
-  Future<bool> _checkPhoneNumber(String phoneNumber) async {
+  /// Handle auto-verification when Firebase automatically verifies the phone number
+  Future<void> _handleAutoVerification(credential, String phoneNumber) async {
     try {
-      // Remove the '+' from the phone number for the API call
-      final cleanedNumber = phoneNumber.startsWith('+') 
-          ? phoneNumber.substring(1) 
-          : phoneNumber;
+      // Sign in with the credential
+      await _firebasePhoneAuth.signInWithCredential(credential);
       
-      // Make the actual API call
-      final response = await _apiService.checkPhoneNumber(cleanedNumber);
-      return response.exists;
+      if (mounted) {
+        // Show success message
+        _showSuccess('Phone number verified automatically!');
+        
+        // Navigate directly to OTP screen or handle the verification
+        Navigator.pushNamed(
+          context,
+          AppConstants.otpVerificationRoute,
+          arguments: {
+            'phone_number': phoneNumber,
+            'password': phoneNumber,
+            'is_phone_exist': true,
+            'auto_verified': true, // Flag to indicate auto-verification
+          },
+        );
+      }
     } catch (e) {
-      debugPrint('Error checking phone number: $e');
-      rethrow;
+      if (mounted) {
+        _showError('Auto-verification failed: $e');
+      }
     }
   }
 
@@ -450,6 +483,18 @@ class _PhoneSignInScreenState extends State<PhoneSignInScreen> {
           content: Text(message),
           backgroundColor: Theme.of(context).colorScheme.error,
           duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  void _showSuccess(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
         ),
       );
     }

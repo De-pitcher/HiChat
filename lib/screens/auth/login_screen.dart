@@ -411,9 +411,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (mounted) {
       if (result.isSuccess) {
-        // AuthWrapper will automatically handle navigation to chat list
-        // when auth state changes - just go back to root
-        Navigator.popUntil(context, (route) => route.isFirst);
+        // Navigate directly to chat list screen since login was successful
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          AppConstants.chatListRoute,
+          (route) => false,
+        );
       } else {
         // Show error message
         _showErrorSnackBar(result.errorMessage ?? 'Login failed');

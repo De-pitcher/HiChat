@@ -200,15 +200,25 @@ class AuthStateManager extends ChangeNotifier {
   /// Handle Google Sign-In result and update auth state
   Future<void> handleGoogleSignInResult(User user) async {
     debugPrint('AuthStateManager: Handling Google Sign-In result for ${user.email}');
-    
+    await _updateAuthState(user, false); // Google sign-in doesn't use remember me
+  }
+
+  /// Handle any successful login and update auth state
+  Future<void> handleSuccessfulLogin(User user, {bool rememberMe = false}) async {
+    debugPrint('AuthStateManager: Handling successful login for ${user.email}');
+    await _updateAuthState(user, rememberMe);
+  }
+
+  /// Internal method to update authentication state
+  Future<void> _updateAuthState(User user, bool rememberMe) async {
     _currentUser = user;
     _isLoggedIn = true;
-    _rememberMe = false; // Google sign-in doesn't use remember me
+    _rememberMe = rememberMe;
     
     // Save to preferences
     await _saveAuthState();
     
-    debugPrint('AuthStateManager: Google Sign-In auth state saved successfully');
+    debugPrint('AuthStateManager: Auth state saved successfully for ${user.email}');
     notifyListeners();
   }
 

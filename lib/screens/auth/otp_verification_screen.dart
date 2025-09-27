@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'dart:async';
 import '../../constants/app_constants.dart';
 import '../../services/api_service.dart';
+import '../../services/firebase_phone_auth_service.dart';
+import '../../services/auth_state_manager.dart';
 import '../../models/user.dart';
 
 class OTPVerificationScreen extends StatefulWidget {
@@ -36,6 +39,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
   // Services
   late ApiService _apiService;
+  final FirebasePhoneAuthService _firebasePhoneAuth = FirebasePhoneAuthService();
 
   @override
   void initState() {
@@ -166,7 +170,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
   String _maskPhoneNumber(String phone) {
     if (phone.length > 6) {
-      return phone.substring(0, 4) + '*******' + phone.substring(phone.length - 2);
+      return '${phone.substring(0, 4)}*******${phone.substring(phone.length - 2)}';
     }
     return phone;
   }
@@ -276,7 +280,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               style: GoogleFonts.poppins(
                 fontSize: 12.83,
                 color: _isResending 
-                    ? theme.colorScheme.onSurface.withOpacity(0.5)
+                    ? theme.colorScheme.onSurface.withValues(alpha: 0.5)
                     : theme.colorScheme.primary,
                 fontWeight: FontWeight.normal,
               ),
@@ -299,7 +303,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
             'Clear All',
             style: GoogleFonts.poppins(
               fontSize: 12.83,
-              color: theme.colorScheme.onSurface.withOpacity(0.7),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
               fontWeight: FontWeight.normal,
             ),
           ),
@@ -324,7 +328,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
             borderRadius: BorderRadius.circular(18),
           ),
           elevation: 0,
-          disabledBackgroundColor: theme.colorScheme.primary.withOpacity(0.6),
+          disabledBackgroundColor: theme.colorScheme.primary.withValues(alpha: 0.6),
         ),
         child: _isLoading
             ? SizedBox(
@@ -373,19 +377,29 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     });
 
     try {
-      // TODO: Implement OTP verification API call
-      // For now, simulate successful OTP verification
-      await Future.delayed(const Duration(seconds: 1));
+      // Verify OTP using Firebase Phone Auth
+      final credential = await _firebasePhoneAuth.verifyOTP(otp);
       
-      // After OTP verification, check if phone number exists in the system
-      final phoneCheckResponse = await _apiService.checkPhoneNumber(widget.phoneNumber);
-      
-      if (phoneCheckResponse.exists) {
-        // Phone exists - proceed with phone login
-        await _handlePhoneLogin();
-      } else {
-        // Phone doesn't exist - navigate to profile setup for account creation
-        await _handleNewUserRegistration();
+      if (credential != null) {
+        // Sign in with Firebase credential
+        await _firebasePhoneAuth.signInWithCredential(credential);
+        
+        debugPrint('Firebase phone authentication successful');
+        
+        // Check if phone number exists in backend system
+        final phoneNumber = widget.phoneNumber.startsWith('+') 
+            ? widget.phoneNumber.substring(1) 
+            : widget.phoneNumber;
+            
+        final phoneCheckResponse = await _apiService.checkPhoneNumber(phoneNumber);
+        
+        if (phoneCheckResponse.exists) {
+          // Phone exists - proceed with phone login
+          await _handlePhoneLogin();
+        } else {
+          // Phone doesn't exist - navigate to profile setup for account creation
+          await _handleNewUserRegistration();
+        }
       }
       
     } catch (e) {
@@ -411,6 +425,10 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       final loginResponse = await _apiService.phoneLogin(phoneLoginRequest);
       
       if (mounted) {
+        // Update AuthStateManager with the logged-in user
+        await Provider.of<AuthStateManager>(context, listen: false)
+            .handleSuccessfulLogin(loginResponse.user);
+        
         // Navigate to chat screen on successful login
         Navigator.pushNamedAndRemoveUntil(
           context,
@@ -450,15 +468,30 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     });
 
     try {
-      // TODO: Implement resend OTP API call
-      await Future.delayed(const Duration(seconds: 1));
+      // Resend OTP using Firebase Phone Auth
+      final otpSent = await _firebasePhoneAuth.resendOTP(
+        phoneNumber: widget.phoneNumber,
+        onSuccess: (message) {
+          if (mounted) {
+            _showSuccess(message);
+            // Reset countdown after successful resend
+            _resetCountdown();
+          }
+        },
+        onError: (error) {
+          if (mounted) {
+            _showError(error);
+          }
+        },
+        onCodeSent: (verificationId) {
+          debugPrint('OTP resent with verification ID: $verificationId');
+        },
+      );
       
-      // Reset countdown
-      _resetCountdown();
-      
-      if (mounted) {
-        _showSuccess('OTP sent successfully!');
+      if (!otpSent && mounted) {
+        _showError('Failed to resend OTP. Please try again.');
       }
+      
     } catch (e) {
       if (mounted) {
         _showError('Failed to resend OTP: $e');
