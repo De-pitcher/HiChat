@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
-import '../../constants/app_theme.dart';
 import '../../constants/app_constants.dart';
 import '../../services/auth_state_manager.dart';
 
@@ -51,16 +50,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: theme.scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: Icon(Icons.arrow_back, color: theme.colorScheme.onSurface),
           onPressed: () => Navigator.pop(context),
         ),
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
+        systemOverlayStyle: theme.brightness == Brightness.dark 
+          ? SystemUiOverlayStyle.light 
+          : SystemUiOverlayStyle.dark,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -114,6 +117,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildAppLogo() {
+    final theme = Theme.of(context);
+    
     return SizedBox(
       width: 133,
       height: 115,
@@ -124,7 +129,7 @@ class _LoginScreenState extends State<LoginScreen> {
           return Icon(
             Icons.chat_bubble_outline,
             size: 60,
-            color: AppColors.primary,
+            color: theme.colorScheme.primary,
           );
         },
       ),
@@ -132,17 +137,21 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildTitle() {
+    final theme = Theme.of(context);
+    
     return Text(
       'Login to Your Account',
       style: GoogleFonts.lato(
         fontSize: 28,
         fontWeight: FontWeight.bold,
-        color: AppColors.primary,
+        color: theme.colorScheme.primary,
       ),
     );
   }
 
   Widget _buildEmailField() {
+    final theme = Theme.of(context);
+    
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       child: TextFormField(
@@ -151,34 +160,34 @@ class _LoginScreenState extends State<LoginScreen> {
         keyboardType: TextInputType.emailAddress,
         textInputAction: TextInputAction.next,
         onFieldSubmitted: (_) => _passwordFocusNode.requestFocus(),
-        style: const TextStyle(
-          color: Colors.black,
+        style: TextStyle(
+          color: theme.colorScheme.onSurface,
           fontSize: 16,
         ),
         decoration: InputDecoration(
           hintText: 'Enter email',
-          hintStyle: const TextStyle(
-            color: Color(0xFFA8A8A8),
+          hintStyle: TextStyle(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
             fontSize: 16,
           ),
           filled: true,
-          fillColor: Colors.white,
+          fillColor: theme.colorScheme.surface,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey.shade300),
+            borderSide: BorderSide(color: theme.dividerColor),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey.shade300),
+            borderSide: BorderSide(color: theme.dividerColor),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: AppColors.primary, width: 2),
+            borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
           ),
           errorBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Colors.red),
+            borderSide: BorderSide(color: theme.colorScheme.error),
           ),
         ),
         validator: (value) {
@@ -195,6 +204,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildPasswordField() {
+    final theme = Theme.of(context);
+    
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       child: TextFormField(
@@ -203,23 +214,23 @@ class _LoginScreenState extends State<LoginScreen> {
         obscureText: !_isPasswordVisible,
         textInputAction: TextInputAction.done,
         onFieldSubmitted: (_) => _handleSignIn(),
-        style: const TextStyle(
-          color: Colors.black,
+        style: TextStyle(
+          color: theme.colorScheme.onSurface,
           fontSize: 16,
         ),
         decoration: InputDecoration(
           hintText: 'Password',
-          hintStyle: const TextStyle(
-            color: Color(0xFFA8A8A8),
+          hintStyle: TextStyle(
+            color: theme.colorScheme.onSurface.withOpacity(0.6),
             fontSize: 16,
           ),
           filled: true,
-          fillColor: Colors.white,
+          fillColor: theme.colorScheme.surface,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
           suffixIcon: IconButton(
             icon: Icon(
               _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-              color: Colors.grey,
+              color: theme.colorScheme.onSurface.withOpacity(0.6),
             ),
             onPressed: () {
               setState(() {
@@ -229,19 +240,19 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey.shade300),
+            borderSide: BorderSide(color: theme.dividerColor),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey.shade300),
+            borderSide: BorderSide(color: theme.dividerColor),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: AppColors.primary, width: 2),
+            borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
           ),
           errorBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Colors.red),
+            borderSide: BorderSide(color: theme.colorScheme.error),
           ),
         ),
         validator: (value) {
@@ -258,6 +269,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildRememberMe() {
+    final theme = Theme.of(context);
+    
     return Consumer<AuthStateManager>(
       builder: (context, authManager, child) {
         return Container(
@@ -272,18 +285,18 @@ class _LoginScreenState extends State<LoginScreen> {
                   width: 20,
                   height: 20,
                   decoration: BoxDecoration(
-                    color: authManager.rememberMe ? AppColors.primary : Colors.transparent,
+                    color: authManager.rememberMe ? theme.colorScheme.primary : Colors.transparent,
                     border: Border.all(
-                      color: AppColors.primary,
+                      color: theme.colorScheme.primary,
                       width: 2,
                     ),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: authManager.rememberMe
-                      ? const Icon(
+                      ? Icon(
                           Icons.check,
                           size: 16,
-                          color: Colors.white,
+                          color: theme.colorScheme.onPrimary,
                         )
                       : null,
                 ),
@@ -297,7 +310,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   'Remember Me',
                   style: GoogleFonts.poppins(
                     fontSize: 12.82,
-                    color: Colors.black,
+                    color: theme.colorScheme.onSurface,
                     fontWeight: FontWeight.normal,
                   ),
                 ),
@@ -310,6 +323,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildSignInButton() {
+    final theme = Theme.of(context);
+    
     return Consumer<AuthStateManager>(
       builder: (context, authManager, child) {
         return AnimatedContainer(
@@ -321,21 +336,21 @@ class _LoginScreenState extends State<LoginScreen> {
             child: ElevatedButton(
             onPressed: authManager.isLoading ? null : _handleSignIn,
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
+              backgroundColor: theme.colorScheme.primary,
+              foregroundColor: theme.colorScheme.onPrimary,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(18),
               ),
               elevation: 0,
-              disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.6),
+              disabledBackgroundColor: theme.colorScheme.primary.withOpacity(0.6),
             ),
             child: authManager.isLoading
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.onPrimary),
                     ),
                   )
                 : Text(
@@ -353,6 +368,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildSignUpLink() {
+    final theme = Theme.of(context);
+    
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -360,7 +377,7 @@ class _LoginScreenState extends State<LoginScreen> {
           "Don't have an account?",
           style: GoogleFonts.poppins(
             fontSize: 9.68,
-            color: Colors.black,
+            color: theme.colorScheme.onSurface,
             fontWeight: FontWeight.w400,
           ),
         ),
@@ -370,7 +387,7 @@ class _LoginScreenState extends State<LoginScreen> {
             " Sign Up",
             style: GoogleFonts.poppins(
               fontSize: 9.68,
-              color: AppColors.primary,
+              color: theme.colorScheme.primary,
               fontWeight: FontWeight.w400,
             ),
           ),

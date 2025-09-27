@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'constants/app_theme.dart';
 import 'constants/app_constants.dart';
 import 'services/auth_state_manager.dart';
@@ -7,12 +9,19 @@ import 'screens/welcome/welcome_screen.dart';
 import 'screens/auth/auth_options_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
+import 'screens/auth/profile_setup_screen.dart';
+import 'screens/auth/phone_signin_screen.dart';
+import 'screens/auth/otp_verification_screen.dart';
 import 'screens/chat/chat_list_screen.dart';
 import 'screens/chat/chat_screen.dart';
 import 'models/chat.dart';
 import 'utils/page_transitions.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const HiChatApp());
 }
 
@@ -43,6 +52,23 @@ class HiChatApp extends StatelessWidget {
             
             case AppConstants.registerRoute:
               return PageTransitions.slideFromRight(const RegisterScreen(), settings: settings);
+            
+            case AppConstants.profileSetupRoute:
+              return PageTransitions.slideFromRight(const ProfileSetupScreen(), settings: settings);
+            
+            case AppConstants.phoneSigninRoute:
+              return PageTransitions.slideFromRight(const PhoneSignInScreen(), settings: settings);
+            
+            case AppConstants.otpVerificationRoute:
+              final args = settings.arguments as Map<String, dynamic>;
+              return PageTransitions.slideFromRight(
+                OTPVerificationScreen(
+                  phoneNumber: args['phone_number'] as String,
+                  password: args['password'] as String,
+                  isPhoneExist: args['is_phone_exist'] as bool,
+                ),
+                settings: settings,
+              );
             
             case AppConstants.chatRoute:
               final chat = settings.arguments as Chat;

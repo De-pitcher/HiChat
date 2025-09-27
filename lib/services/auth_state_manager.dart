@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 import 'api_service.dart';
 import 'api_exceptions.dart';
+import 'google_signin_service.dart';
 
 /// Manages authentication state throughout the app
 /// Handles login, logout, remember me, and auto-login functionality
@@ -21,6 +22,7 @@ class AuthStateManager extends ChangeNotifier {
   String _rememberedPassword = '';
 
   final ApiService _apiService = ApiService();
+  final GoogleSignInService _googleSignInService = GoogleSignInService();
 
   // Getters
   User? get currentUser => _currentUser;
@@ -122,6 +124,35 @@ class AuthStateManager extends ChangeNotifier {
   Future<void> logout() async {
     debugPrint('AuthStateManager: Logging out user ${_currentUser?.email}');
     
+    try {
+      // If user has a token, try to logout from backend
+      if (_currentUser?.token != null) {
+        try {
+          debugPrint('AuthStateManager: Calling backend logout API');
+          await _apiService.logout(_currentUser!.token!);
+          debugPrint('AuthStateManager: Backend logout successful');
+        } catch (e) {
+          debugPrint('AuthStateManager: Backend logout failed (continuing with local logout): $e');
+          // Continue with local logout even if backend fails
+        }
+      }
+      
+      // Always sign out from Google and Firebase (regardless of how user logged in)
+      try {
+        debugPrint('AuthStateManager: Performing Google & Firebase sign out');
+        await _googleSignInService.signOut();
+        debugPrint('AuthStateManager: Google & Firebase sign out successful');
+      } catch (e) {
+        debugPrint('AuthStateManager: Google/Firebase sign out failed (continuing): $e');
+        // Continue with local logout even if Google sign out fails
+      }
+      
+    } catch (e) {
+      debugPrint('AuthStateManager: Error during logout process: $e');
+      // Continue with local cleanup even if remote logout fails
+    }
+    
+    // Always clear local session data
     _currentUser = null;
     _isLoggedIn = false;
     
@@ -164,6 +195,21 @@ class AuthStateManager extends ChangeNotifier {
       await logout();
       return false;
     }
+  }
+
+  /// Handle Google Sign-In result and update auth state
+  Future<void> handleGoogleSignInResult(User user) async {
+    debugPrint('AuthStateManager: Handling Google Sign-In result for ${user.email}');
+    
+    _currentUser = user;
+    _isLoggedIn = true;
+    _rememberMe = false; // Google sign-in doesn't use remember me
+    
+    // Save to preferences
+    await _saveAuthState();
+    
+    debugPrint('AuthStateManager: Google Sign-In auth state saved successfully');
+    notifyListeners();
   }
 
   // Private methods

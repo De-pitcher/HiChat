@@ -69,6 +69,9 @@ class AppConstants {
   static const String authOptionsRoute = '/auth-options';
   static const String loginRoute = '/login';
   static const String registerRoute = '/register';
+  static const String profileSetupRoute = '/profile-setup';
+  static const String phoneSigninRoute = '/phone-signin';
+  static const String otpVerificationRoute = '/otp-verification';
   static const String chatListRoute = '/chat-list';
   static const String chatRoute = '/chat';
   static const String profileRoute = '/profile';

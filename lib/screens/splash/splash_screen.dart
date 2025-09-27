@@ -37,8 +37,11 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
     return Scaffold(
-      backgroundColor: AppColors.splashBackground,
+      backgroundColor: isDark ? theme.scaffoldBackgroundColor : AppColors.splashBackground,
       body: SafeArea(
         child: Column(
           children: [
@@ -55,7 +58,7 @@ class _SplashScreenState extends State<SplashScreen>
                       return Icon(
                         Icons.chat_bubble_outline,
                         size: 120,
-                        color: AppColors.primary.withOpacity(0.7),
+                        color: theme.colorScheme.primary.withValues(alpha: 0.7),
                       );
                     },
                   ),
@@ -78,6 +81,8 @@ class _SplashScreenState extends State<SplashScreen>
     return AnimatedBuilder(
       animation: _animationController,
       builder: (context, child) {
+        final theme = Theme.of(context);
+        
         return Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(4, (index) {
@@ -90,7 +95,7 @@ class _SplashScreenState extends State<SplashScreen>
               width: 5.77,
               height: 5.66,
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(opacity),
+                color: theme.colorScheme.primary.withValues(alpha: opacity),
                 shape: BoxShape.circle,
               ),
             );

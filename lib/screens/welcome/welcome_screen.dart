@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:math' as math;
-import '../../constants/app_theme.dart';
 import '../../widgets/animated_border_widget.dart';
 
 class WelcomeScreen extends StatefulWidget {
@@ -38,8 +37,10 @@ class _WelcomeScreenState extends State<WelcomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Stack(
           children: [
@@ -148,6 +149,8 @@ class _WelcomeScreenState extends State<WelcomeScreen>
   }
 
   Widget _buildBottomContent() {
+    final theme = Theme.of(context);
+    
     return Positioned(
       left: 0,
       right: 0,
@@ -159,7 +162,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
             'Welcome To Chat',
             style: GoogleFonts.fredoka(
               fontSize: 35.84,
-              color: Colors.black,
+              color: theme.colorScheme.onSurface,
               fontWeight: FontWeight.bold,
               letterSpacing: 1.2,
             ),
@@ -176,7 +179,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
                 fontSize: 14,
-                color: const Color(0xFF555555),
+                color: theme.textTheme.bodyMedium?.color ?? theme.colorScheme.onSurface.withValues(alpha: 0.7),
                 fontWeight: FontWeight.w400,
               ),
             ),
@@ -189,7 +192,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
             width: 42,
             height: 7,
             decoration: BoxDecoration(
-              color: AppColors.primary,
+              color: theme.colorScheme.primary,
               borderRadius: BorderRadius.circular(3.5),
             ),
           ),
@@ -197,20 +200,17 @@ class _WelcomeScreenState extends State<WelcomeScreen>
           const SizedBox(height: 24),
           
           // Get Started button
-          Container(
+          SizedBox(
             width: 262,
             height: 48,
             child: ElevatedButton(
               onPressed: () {
                 Navigator.pushReplacementNamed(context, '/auth-options');
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
+              style: theme.elevatedButtonTheme.style?.copyWith(
+                shape: WidgetStateProperty.all(RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(24),
-                ),
-                elevation: 0,
+                )),
               ),
               child: Text(
                 'Get Started',
@@ -240,16 +240,18 @@ class _ProfileImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return ClipOval(
       child: Image.asset(
         imagePath,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) {
           return Container(
-            color: AppColors.primary.withOpacity(0.2),
+            color: theme.colorScheme.primary.withValues(alpha: 0.2),
             child: Icon(
               fallbackIcon,
-              color: AppColors.primary,
+              color: theme.colorScheme.primary,
               size: 40,
             ),
           );

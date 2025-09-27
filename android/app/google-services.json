@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "282657049766",
+    "project_id": "hi-call-1fc56",
+    "storage_bucket": "hi-call-1fc56.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:282657049766:android:d33c08bb18713535f7b867",
+        "android_client_info": {
+          "package_name": "com.rodeni.hichat"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "282657049766-oh2vghmpbgigook6qg2v8545mm2crop6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rodeni.hichat",
+            "certificate_hash": "3008e46e94e119e49c02b5b8cba792b34c55499d"
+          }
+        },
+        {
+          "client_id": "282657049766-ptkah24ngd27p7togsg2vu572lcc0f8g.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rodeni.hichat",
+            "certificate_hash": "2e038e5fc0869ba2a5434c9895495fde6aeb1853"
+          }
+        },
+        {
+          "client_id": "282657049766-6a2plddbgf22m95kbr42lsk78rsq16fb.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyByifTOohJNjkMQg0_MUkUl47kmZx13onw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "282657049766-6a2plddbgf22m95kbr42lsk78rsq16fb.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

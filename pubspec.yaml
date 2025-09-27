@@ -46,6 +46,19 @@ dependencies:
   
   # State management with Provider
   provider: ^6.1.1
+  
+  # Country code picker for phone number input
+  country_code_picker: ^3.0.0
+  
+  # Image picker for selecting profile images
+  image_picker: ^1.0.4
+  
+  # Google Sign-In for authentication
+  google_sign_in: ^6.3.0
+  
+  # Firebase Authentication (if using Firebase backend)
+  firebase_auth: ^6.1.0
+  firebase_core: ^4.1.1
 
 dev_dependencies:
   flutter_test:

@@ -10,6 +10,7 @@ class User {
   final String? about;
   final String? dateOfBirth;
   final String? availability;
+  final String? googleId;
   final DateTime createdAt;
   
   // Backward compatibility fields for existing code
@@ -26,6 +27,7 @@ class User {
     this.about,
     this.dateOfBirth,
     this.availability,
+    this.googleId,
     required this.createdAt,
     // Backward compatibility defaults
     this.isOnline = false,
@@ -45,6 +47,7 @@ class User {
     String? about,
     String? dateOfBirth,
     String? availability,
+    String? googleId,
     DateTime? createdAt,
     bool? isOnline,
     DateTime? lastSeen,
@@ -59,6 +62,7 @@ class User {
       about: about ?? this.about,
       dateOfBirth: dateOfBirth ?? this.dateOfBirth,
       availability: availability ?? this.availability,
+      googleId: googleId ?? this.googleId,
       createdAt: createdAt ?? this.createdAt,
       isOnline: isOnline ?? this.isOnline,
       lastSeen: lastSeen ?? this.lastSeen,
@@ -76,6 +80,7 @@ class User {
       'about': about,
       'date_of_birth': dateOfBirth,
       'availability': availability,
+      'google_id': googleId,
       'created_at': createdAt.toIso8601String(),
       // Include backward compatibility fields
       'isOnline': isOnline,
@@ -94,6 +99,7 @@ class User {
       about: json['about'] as String?,
       dateOfBirth: json['date_of_birth'] as String?,
       availability: json['availability'] as String?,
+      googleId: json['google_id'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
       // Handle backward compatibility
       isOnline: json['isOnline'] as bool? ?? (json['availability'] == 'online'),
@@ -168,6 +174,28 @@ class LoginRequest {
   }
 }
 
+class PhoneLoginRequest {
+  final String phoneNumber;
+  final String password;
+
+  const PhoneLoginRequest({
+    required this.phoneNumber, 
+    required this.password,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'phone_number': phoneNumber,
+      'password': password,
+    };
+  }
+
+  @override
+  String toString() {
+    return 'PhoneLoginRequest(phoneNumber: $phoneNumber)'; // Don't include password in toString
+  }
+}
+
 class LoginResponse {
   final User user;
 
@@ -199,5 +227,232 @@ class LoginResponse {
   @override
   String toString() {
     return 'LoginResponse(user: $user)';
+  }
+}
+
+class PhoneCheckResponse {
+  final bool exists;
+
+  const PhoneCheckResponse({
+    required this.exists,
+  });
+
+  factory PhoneCheckResponse.fromJson(Map<String, dynamic> json) {
+    // Handle different possible response formats
+    if (json.containsKey('data')) {
+      // Format: {"data": true/false}
+      return PhoneCheckResponse(
+        exists: json['data'] as bool,
+      );
+    } else if (json.containsKey('exists')) {
+      // Format: {"exists": true/false}
+      return PhoneCheckResponse(
+        exists: json['exists'] as bool,
+      );
+    } else {
+      // Default to false if neither field exists
+      return const PhoneCheckResponse(exists: false);
+    }
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'data': exists,
+    };
+  }
+
+  @override
+  String toString() {
+    return 'PhoneCheckResponse(exists: $exists)';
+  }
+}
+
+class SignupRequest {
+  final String? email;
+  final String? phoneNumber;
+  final String username;
+  final String password;
+  final String name;
+  final String about;
+  final String dateOfBirth;
+  final String? profileImage;
+
+  const SignupRequest({
+    this.email,
+    this.phoneNumber,
+    required this.username,
+    required this.password,
+    required this.name,
+    required this.about,
+    required this.dateOfBirth,
+    this.profileImage,
+  });
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> json = {
+      'username': username,
+      'password': password,
+      'name': name,
+      'about': about,
+      'dob': dateOfBirth,
+    };
+
+    if (email != null) {
+      json['email'] = email;
+    }
+
+    if (phoneNumber != null) {
+      json['phone_number'] = phoneNumber;
+    }
+
+    if (profileImage != null) {
+      json['profile_image'] = profileImage;
+    }
+
+    return json;
+  }
+
+  @override
+  String toString() {
+    return 'SignupRequest(email: $email, phoneNumber: $phoneNumber, username: $username, name: $name)';
+  }
+}
+
+class SignupResponse {
+  final User user;
+
+  const SignupResponse({
+    required this.user,
+  });
+
+  factory SignupResponse.fromJson(Map<String, dynamic> json) {
+    // Handle both formats: direct user data or wrapped in 'user' key
+    if (json.containsKey('user')) {
+      // Format: {"user": {...}}
+      return SignupResponse(
+        user: User.fromJson(json['user'] as Map<String, dynamic>),
+      );
+    } else {
+      // Format: {...} (direct user data)
+      return SignupResponse(
+        user: User.fromJson(json),
+      );
+    }
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'user': user.toJson(),
+    };
+  }
+
+  @override
+  String toString() {
+    return 'SignupResponse(user: $user)';
+  }
+}
+
+class ProfileUpdateRequest {
+  final String? username;
+  final String? email;
+  final String? phoneNumber;
+  final String? password;
+  final String? about;
+  final String? dateOfBirth;
+  final String? availability;
+  final String? image; // base64 image data
+  final String? name;
+
+  const ProfileUpdateRequest({
+    this.username,
+    this.email,
+    this.phoneNumber,
+    this.password,
+    this.about,
+    this.dateOfBirth,
+    this.availability,
+    this.image,
+    this.name,
+  });
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> json = {};
+
+    if (username != null) json['username'] = username;
+    if (email != null) json['email'] = email;
+    if (phoneNumber != null) json['phone_number'] = phoneNumber;
+    if (password != null) json['password'] = password;
+    if (about != null) json['about'] = about;
+    if (dateOfBirth != null) json['date_of_birth'] = dateOfBirth;
+    if (availability != null) json['availability'] = availability;
+    if (image != null) json['image'] = image;
+    if (name != null) json['name'] = name;
+
+    return json;
+  }
+
+  @override
+  String toString() {
+    return 'ProfileUpdateRequest(username: $username, email: $email, phoneNumber: $phoneNumber, name: $name)';
+  }
+}
+
+class GoogleSignInRequest {
+  final String firebaseIdToken;
+  final String email;
+  final String displayName;
+  final String? photoUrl;
+  final String googleId;
+
+  const GoogleSignInRequest({
+    required this.firebaseIdToken,
+    required this.email,
+    required this.displayName,
+    this.photoUrl,
+    required this.googleId,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'firebase_id_token': firebaseIdToken,
+      'email': email,
+      'display_name': displayName,
+      'photo_url': photoUrl,
+      'google_id': googleId,
+    };
+  }
+
+  @override
+  String toString() {
+    return 'GoogleSignInRequest(email: $email, displayName: $displayName, googleId: $googleId)';
+  }
+}
+
+class GoogleSignInResponse {
+  final User user;
+  final bool isNew;
+
+  const GoogleSignInResponse({
+    required this.user,
+    required this.isNew,
+  });
+
+  factory GoogleSignInResponse.fromJson(Map<String, dynamic> json) {
+    return GoogleSignInResponse(
+      user: User.fromJson(json['user'] as Map<String, dynamic>),
+      isNew: json['isNew'] as bool,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'user': user.toJson(),
+      'isNew': isNew,
+    };
+  }
+
+  @override
+  String toString() {
+    return 'GoogleSignInResponse(user: ${user.username}, isNew: $isNew)';
   }
 }
