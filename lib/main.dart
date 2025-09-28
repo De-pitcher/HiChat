@@ -14,6 +14,7 @@ import 'screens/auth/phone_signin_screen.dart';
 import 'screens/auth/otp_verification_screen.dart';
 import 'screens/chat/chat_list_screen.dart';
 import 'screens/chat/chat_screen.dart';
+import 'screens/camera/camera_screen.dart';
 import 'models/chat.dart';
 import 'utils/page_transitions.dart';
 
@@ -74,6 +75,12 @@ class HiChatApp extends StatelessWidget {
               final chat = settings.arguments as Chat;
               return PageTransitions.slideFromRight(
                 ChatScreen(chat: chat),
+                settings: settings,
+              );
+            
+            case AppConstants.cameraRoute:
+              return PageTransitions.slideFromRight(
+                const CameraScreen(),
                 settings: settings,
               );
             

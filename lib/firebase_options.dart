@@ -31,37 +31,37 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyByifTOohJNjkMQg0_MUkUl47kmZx13onw',
-    appId: '1:282657049766:web:d33c08bb18713535f7b867',
-    messagingSenderId: '282657049766',
-    projectId: 'hi-call-1fc56',
-    authDomain: 'hi-call-1fc56.firebaseapp.com',
-    storageBucket: 'hi-call-1fc56.firebasestorage.app',
+    apiKey: 'AIzaSyA5_RzaCrpTcTbOkfJi5QAvS67BTnz1z4M',
+    appId: '1:840338952677:web:d088a5d6697a8d15afdf0c',
+    messagingSenderId: '840338952677',
+    projectId: 'hi-chat-12aa2',
+    authDomain: 'hi-chat-12aa2.firebaseapp.com',
+    storageBucket: 'hi-chat-12aa2.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyByifTOohJNjkMQg0_MUkUl47kmZx13onw',
-    appId: '1:282657049766:android:d33c08bb18713535f7b867',
-    messagingSenderId: '282657049766',
-    projectId: 'hi-call-1fc56',
-    storageBucket: 'hi-call-1fc56.firebasestorage.app',
+    apiKey: 'AIzaSyA5_RzaCrpTcTbOkfJi5QAvS67BTnz1z4M',
+    appId: '1:840338952677:android:d088a5d6697a8d15afdf0c',
+    messagingSenderId: '840338952677',
+    projectId: 'hi-chat-12aa2',
+    storageBucket: 'hi-chat-12aa2.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyByifTOohJNjkMQg0_MUkUl47kmZx13onw',
-    appId: '1:282657049766:ios:d33c08bb18713535f7b867',
-    messagingSenderId: '282657049766',
-    projectId: 'hi-call-1fc56',
-    storageBucket: 'hi-call-1fc56.firebasestorage.app',
-    iosBundleId: 'com.rodeni.hichat',
+    apiKey: 'AIzaSyA5_RzaCrpTcTbOkfJi5QAvS67BTnz1z4M',
+    appId: '1:840338952677:ios:d088a5d6697a8d15afdf0c',
+    messagingSenderId: '840338952677',
+    projectId: 'hi-chat-12aa2',
+    storageBucket: 'hi-chat-12aa2.firebasestorage.app',
+    iosBundleId: 'com.rodeni.hi_chat',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyByifTOohJNjkMQg0_MUkUl47kmZx13onw',
-    appId: '1:282657049766:ios:d33c08bb18713535f7b867',
-    messagingSenderId: '282657049766',
-    projectId: 'hi-call-1fc56',
-    storageBucket: 'hi-call-1fc56.firebasestorage.app',
-    iosBundleId: 'com.rodeni.hichat',
+    apiKey: 'AIzaSyA5_RzaCrpTcTbOkfJi5QAvS67BTnz1z4M',
+    appId: '1:840338952677:ios:d088a5d6697a8d15afdf0c',
+    messagingSenderId: '840338952677',
+    projectId: 'hi-chat-12aa2',
+    storageBucket: 'hi-chat-12aa2.firebasestorage.app',
+    iosBundleId: 'com.rodeni.hi_chat',
   );
 }

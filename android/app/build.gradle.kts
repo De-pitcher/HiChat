@@ -7,8 +7,8 @@ plugins {
 }
 
 android {
-    namespace = "com.rodeni.hichat"
-    compileSdk = flutter.compileSdkVersion
+    namespace = "com.rodeni.hi_chat"
+    compileSdk = 35  // Required for Camera Service Plugin and latest dependencies
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -19,14 +19,19 @@ android {
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
+    
+    packagingOptions {
+        pickFirst("**/libc++_shared.so")
+        pickFirst("**/libjsc.so")
+    }
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.rodeni.hichat"
+        applicationId = "com.rodeni.hi_chat"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 23  // Updated for Firebase Auth compatibility
-        targetSdk = flutter.targetSdkVersion
+        minSdk = 23  // Updated for Firebase Auth and Camera Service Plugin compatibility
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

@@ -490,9 +490,9 @@ class _MessageInput extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.attach_file),
+            icon: const Icon(Icons.camera_alt),
             onPressed: () {
-              // TODO: Implement file attachment
+              Navigator.pushNamed(context, '/camera');
             },
           ),
           Expanded(

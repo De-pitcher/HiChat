@@ -87,4 +87,7 @@ class AppConstants {
   // Default Values
   static const String defaultProfileImage = 'assets/images/default_avatar.png';
   static const String defaultGroupImage = 'assets/images/default_group.png';
+  
+  // Camera Routes
+  static const String cameraRoute = '/camera';
 }

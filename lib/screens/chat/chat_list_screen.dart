@@ -189,6 +189,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
         title: const Text('HiChat'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.camera_alt),
+            tooltip: 'Camera',
+            onPressed: () {
+              Navigator.pushNamed(context, '/camera');
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.search),
             onPressed: () {
               // TODO: Implement search functionality

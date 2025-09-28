@@ -59,6 +59,14 @@ dependencies:
   # Firebase Authentication (if using Firebase backend)
   firebase_auth: ^6.1.0
   firebase_core: ^4.1.1
+  
+  # Camera Service Plugin for media capture
+  camera_service_plugin:
+    git:
+      url: https://github.com/De-pitcher/camera_service_plugin.git
+      
+  # Path provider for file operations
+  path_provider: ^2.1.1
 
 dev_dependencies:
   flutter_test:
