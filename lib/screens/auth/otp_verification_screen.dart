@@ -468,11 +468,17 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     });
 
     try {
+      debugPrint('OTP Resend: Starting resend process for ${widget.phoneNumber}');
+      
+      // Clear existing OTP fields
+      _clearAllFields();
+      
       // Resend OTP using Firebase Phone Auth
       final otpSent = await _firebasePhoneAuth.resendOTP(
         phoneNumber: widget.phoneNumber,
         onSuccess: (message) {
           if (mounted) {
+            debugPrint('OTP Resend: Success - $message');
             _showSuccess(message);
             // Reset countdown after successful resend
             _resetCountdown();
@@ -480,11 +486,18 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
         },
         onError: (error) {
           if (mounted) {
-            _showError(error);
+            debugPrint('OTP Resend: Error - $error');
+            // Show more user-friendly error messages
+            String userMessage = error.toLowerCase().contains('too-many-requests') 
+                ? 'Too many attempts. Please wait before trying again.'
+                : error.toLowerCase().contains('quota')
+                ? 'SMS limit reached. Please try again later.'
+                : 'Failed to resend code. Please try again.';
+            _showError(userMessage);
           }
         },
         onCodeSent: (verificationId) {
-          debugPrint('OTP resent with verification ID: $verificationId');
+          debugPrint('OTP Resend: New verification ID received - $verificationId');
         },
       );
       

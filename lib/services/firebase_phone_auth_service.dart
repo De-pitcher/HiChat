@@ -26,6 +26,8 @@ class FirebasePhoneAuthService {
     try {
       debugPrint('FirebasePhoneAuth: Sending OTP to $phoneNumber');
       debugPrint('FirebasePhoneAuth: Project ID: ${_firebaseAuth.app.options.projectId}');
+      debugPrint('FirebasePhoneAuth: Project Number: ${_firebaseAuth.app.options.messagingSenderId}');
+      debugPrint('FirebasePhoneAuth: App ID: ${_firebaseAuth.app.options.appId}');
       debugPrint('FirebasePhoneAuth: Current user: ${_firebaseAuth.currentUser?.uid ?? "None"}');
       
       await _firebaseAuth.verifyPhoneNumber(
@@ -61,7 +63,8 @@ class FirebasePhoneAuthService {
           // This is called when the auto-retrieval timeout expires
           // Usually happens after 30 seconds on Android
         },
-        forceResendingToken: _resendToken,
+        // Don't use forceResendingToken on initial send (it should be null)
+        forceResendingToken: null,
       );
       
       return true;
@@ -133,6 +136,7 @@ class FirebasePhoneAuthService {
   }) async {
     try {
       debugPrint('FirebasePhoneAuth: Resending OTP to $phoneNumber');
+      debugPrint('FirebasePhoneAuth: Using resend token: ${_resendToken != null ? "Available" : "Not Available"}');
       
       await _firebaseAuth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
@@ -167,6 +171,18 @@ class FirebasePhoneAuthService {
       return true;
     } catch (e) {
       debugPrint('FirebasePhoneAuth: Error resending OTP: $e');
+      
+      // If resend with token fails, try a fresh send as fallback
+      if (_resendToken != null) {
+        debugPrint('FirebasePhoneAuth: Resend with token failed, trying fresh send...');
+        return await sendOTP(
+          phoneNumber: phoneNumber,
+          onError: onError,
+          onSuccess: onSuccess,
+          onCodeSent: onCodeSent,
+        );
+      }
+      
       onError('Failed to resend OTP: ${e.toString()}');
       return false;
     }
