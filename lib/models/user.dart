@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 class User {
   final int id;
@@ -89,24 +90,71 @@ class User {
   }
 
   factory User.fromJson(Map<String, dynamic> json) {
-    return User(
-      id: json['id'] as int,
-      email: json['email'] as String,
-      imageUrl: json['image_url'] as String?,
-      username: json['username'] as String,
-      phoneNumber: json['phone_number'] as String?,
-      token: json['token'] as String?,
-      about: json['about'] as String?,
-      dateOfBirth: json['date_of_birth'] as String?,
-      availability: json['availability'] as String?,
-      googleId: json['google_id'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      // Handle backward compatibility
-      isOnline: json['isOnline'] as bool? ?? (json['availability'] == 'online'),
-      lastSeen: json['lastSeen'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(json['lastSeen'] as int)
-          : null,
+    developer.log(
+      'Parsing User from JSON',
+      name: 'User',
+      error: {
+        'jsonKeys': json.keys.toList(),
+        'id': json['id'],
+        'username': json['username'],
+        'email': json['email'],
+        'availability': json['availability'],
+        'fullJson': json,
+      },
+      level: 800,
     );
+    
+    try {
+      final user = User(
+        id: json['id'] as int,
+        email: json['email'] as String,
+        imageUrl: json['image_url'] as String?,
+        username: json['username'] as String,
+        phoneNumber: json['phone_number'] as String?,
+        token: json['token'] as String?,
+        about: json['about'] as String?,
+        dateOfBirth: json['date_of_birth'] as String?,
+        availability: json['availability'] as String?,
+        googleId: json['google_id'] as String?,
+        // Handle cases where created_at might not be present (e.g., in search results)
+        createdAt: json['created_at'] != null 
+            ? DateTime.parse(json['created_at'] as String)
+            : DateTime.now(),
+        // Handle backward compatibility
+        isOnline: json['isOnline'] as bool? ?? (json['availability'] == 'online'),
+        lastSeen: json['lastSeen'] != null
+            ? DateTime.fromMillisecondsSinceEpoch(json['lastSeen'] as int)
+            : null,
+      );
+      
+      developer.log(
+        'Successfully created User',
+        name: 'User',
+        error: {
+          'userId': user.id,
+          'username': user.username,
+          'email': user.email,
+          'availability': user.availability,
+          'hasImageUrl': user.imageUrl != null,
+        },
+        level: 800,
+      );
+      
+      return user;
+    } catch (e) {
+      developer.log(
+        'Error parsing User from JSON',
+        name: 'User',
+        error: {
+          'error': e.toString(),
+          'errorType': e.runtimeType.toString(),
+          'stackTrace': e is Error ? e.stackTrace.toString() : 'No stack trace',
+          'rawJson': json,
+        },
+        level: 1000,
+      );
+      rethrow;
+    }
   }
 
   // Factory for backward compatibility with old format

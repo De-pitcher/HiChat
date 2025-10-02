@@ -78,6 +78,7 @@ class AppConstants {
   static const String settingsRoute = '/settings';
   static const String newChatRoute = '/new-chat';
   static const String groupChatRoute = '/group-chat';
+  static const String locationSharingRoute = '/location-sharing';
   
   // Shared Preferences Keys
   static const String firstLaunchKey = 'first_launch';

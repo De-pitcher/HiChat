@@ -144,7 +144,7 @@ class _PhoneSignInScreenState extends State<PhoneSignInScreen> {
             width: 133,
             height: 115,
             decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withOpacity(0.1),
+              color: theme.colorScheme.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
@@ -178,7 +178,7 @@ class _PhoneSignInScreenState extends State<PhoneSignInScreen> {
         decoration: InputDecoration(
           hintText: 'Enter phone number',
           hintStyle: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
             fontSize: 16,
           ),
           prefixIcon: LayoutBuilder(
@@ -215,7 +215,7 @@ class _PhoneSignInScreenState extends State<PhoneSignInScreen> {
                           color: Theme.of(context).colorScheme.onSurface,
                         ),
                         dialogBackgroundColor: Theme.of(context).colorScheme.surface,
-                        barrierColor: Colors.black.withOpacity(0.5),
+                        barrierColor: Colors.black.withValues(alpha: 0.5),
                         boxDecoration: const BoxDecoration(
                           color: Colors.transparent,
                         ),
@@ -258,7 +258,7 @@ class _PhoneSignInScreenState extends State<PhoneSignInScreen> {
           contentPadding: const EdgeInsets.only(left: 8, right: 16, top: 16, bottom: 16),
           filled: true,
           fillColor: Theme.of(context).brightness == Brightness.dark 
-            ? Theme.of(context).colorScheme.surface.withOpacity(0.8)
+            ? Theme.of(context).colorScheme.surface.withValues(alpha: 0.8)
             : Theme.of(context).colorScheme.surface,
         ),
         style: TextStyle(
@@ -358,7 +358,7 @@ class _PhoneSignInScreenState extends State<PhoneSignInScreen> {
             borderRadius: BorderRadius.circular(26),
           ),
           elevation: 0,
-          disabledBackgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.6),
+          disabledBackgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.6),
         ),
         child: _isLoading
             ? const SizedBox(

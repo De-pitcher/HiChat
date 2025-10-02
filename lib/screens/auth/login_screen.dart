@@ -221,7 +221,7 @@ class _LoginScreenState extends State<LoginScreen> {
         decoration: InputDecoration(
           hintText: 'Password',
           hintStyle: TextStyle(
-            color: theme.colorScheme.onSurface.withOpacity(0.6),
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
             fontSize: 16,
           ),
           filled: true,
@@ -230,7 +230,7 @@ class _LoginScreenState extends State<LoginScreen> {
           suffixIcon: IconButton(
             icon: Icon(
               _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-              color: theme.colorScheme.onSurface.withOpacity(0.6),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
             ),
             onPressed: () {
               setState(() {
@@ -342,7 +342,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 borderRadius: BorderRadius.circular(18),
               ),
               elevation: 0,
-              disabledBackgroundColor: theme.colorScheme.primary.withOpacity(0.6),
+              disabledBackgroundColor: theme.colorScheme.primary.withValues(alpha: 0.6),
             ),
             child: authManager.isLoading
                 ? SizedBox(

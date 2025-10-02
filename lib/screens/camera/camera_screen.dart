@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'dart:convert';
-import 'dart:typed_data';
 import '../../services/camera_service.dart';
 import '../../constants/app_theme.dart';
 
@@ -346,7 +344,7 @@ class _CameraScreenState extends State<CameraScreen>
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           gradient: LinearGradient(
-            colors: [AppColors.primary, AppColors.primary.withOpacity(0.8)],
+            colors: [AppColors.primary, AppColors.primary.withValues(alpha: 0.8)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -373,7 +371,7 @@ class _CameraScreenState extends State<CameraScreen>
               Text(
                 'Capture images, record videos, and audio with professional quality',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withOpacity(0.9),
+                  color: Colors.white.withValues(alpha: 0.9),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -450,7 +448,7 @@ class _CameraScreenState extends State<CameraScreen>
           scale: isActive ? _scaleAnimation.value : 1.0,
           child: Card(
             elevation: isActive ? 8 : 2,
-            color: isActive ? color.withOpacity(0.1) : null,
+            color: isActive ? color.withValues(alpha: 0.1) : null,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: InkWell(
               borderRadius: BorderRadius.circular(12),

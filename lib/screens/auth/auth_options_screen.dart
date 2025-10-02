@@ -336,6 +336,11 @@ class _AuthOptionsScreenState extends State<AuthOptionsScreen> {
   }
 
   Future<void> _handleGoogleSignIn(BuildContext context) async {
+    // Capture context reference for safe async usage
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final authManager = Provider.of<AuthStateManager>(context, listen: false);
+    
     setState(() {
       _isGoogleSignInLoading = true;
     });
@@ -343,33 +348,41 @@ class _AuthOptionsScreenState extends State<AuthOptionsScreen> {
     try {
       final result = await _googleSignInService.signInWithGoogle();
       
+      if (!mounted) return;
+      
       if (result == null) {
         // User cancelled the sign-in
-        _showMessage(context, 'Sign-in was cancelled', isError: false);
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text('Sign-in was cancelled'),
+            backgroundColor: Colors.orange,
+          ),
+        );
         return;
       }
 
-      if (mounted) {
-        // Update auth state with Google Sign-In result
-        await Provider.of<AuthStateManager>(context, listen: false)
-            .handleGoogleSignInResult(result.user);
+      // Update auth state with Google Sign-In result
+      await authManager.handleGoogleSignInResult(result.user);
 
-        // Show success message
-        _showMessage(
-          context, 
-          result.isNewUser 
-            ? 'Welcome ${result.user.username}! Account created successfully.'
-            : 'Welcome back ${result.user.username}!',
-          isError: false,
-        );
+      if (!mounted) return;
 
-        // Navigate to chat screen - AuthWrapper will handle routing automatically
-        Navigator.pushNamedAndRemoveUntil(
-          context,
-          '/', // Go to root, AuthWrapper will redirect to chat list
-          (route) => false,
-        );
-      }
+      // Show success message
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            result.isNewUser 
+              ? 'Welcome ${result.user.username}! Account created successfully.'
+              : 'Welcome back ${result.user.username}!',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // Navigate to chat screen - AuthWrapper will handle routing automatically
+      navigator.pushNamedAndRemoveUntil(
+        '/', // Go to root, AuthWrapper will redirect to chat list
+        (route) => false,
+      );
     } catch (e) {
       if (mounted) {
         // Show user-friendly error message
@@ -383,7 +396,12 @@ class _AuthOptionsScreenState extends State<AuthOptionsScreen> {
           errorMessage = 'Authentication error. Please try again or contact support.';
         }
         
-        _showMessage(context, errorMessage, isError: true);
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+          ),
+        );
         
         // Additional logging for debugging
         debugPrint('Detailed Google Sign-In error: $e');
@@ -397,17 +415,7 @@ class _AuthOptionsScreenState extends State<AuthOptionsScreen> {
     }
   }
 
-  void _showMessage(BuildContext context, String message, {required bool isError}) {
-    final theme = Theme.of(context);
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 3),
-        backgroundColor: isError ? theme.colorScheme.error : theme.colorScheme.primary,
-      ),
-    );
-  }
+
 
   void _showComingSoon(BuildContext context, String feature) {
     final theme = Theme.of(context);

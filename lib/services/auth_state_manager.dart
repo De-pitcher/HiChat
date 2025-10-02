@@ -4,6 +4,8 @@ import '../models/user.dart';
 import 'api_service.dart';
 import 'api_exceptions.dart';
 import 'google_signin_service.dart';
+import 'chat_websocket_service.dart';
+import 'chat_state_manager.dart';
 
 /// Manages authentication state throughout the app
 /// Handles login, logout, remember me, and auto-login functionality
@@ -23,6 +25,8 @@ class AuthStateManager extends ChangeNotifier {
 
   final ApiService _apiService = ApiService();
   final GoogleSignInService _googleSignInService = GoogleSignInService();
+  final ChatWebSocketService _chatWebSocketService = ChatWebSocketService.instance;
+  final ChatStateManager _chatStateManager = ChatStateManager.instance;
 
   // Getters
   User? get currentUser => _currentUser;
@@ -53,6 +57,9 @@ class AuthStateManager extends ChangeNotifier {
         if (userJson != null) {
           _currentUser = User.fromStoredJson(userJson);
           debugPrint('AuthStateManager: Restored user session for ${_currentUser?.email}');
+          
+          // Initialize WebSocket connection for restored session
+          await _initializeWebSocketConnection();
         } else {
           // User data not found, reset login state
           _isLoggedIn = false;
@@ -96,6 +103,10 @@ class AuthStateManager extends ChangeNotifier {
       }
       
       debugPrint('AuthStateManager: Login successful for ${_currentUser?.email}');
+      
+      // Initialize WebSocket connection after successful login
+      await _initializeWebSocketConnection();
+      
       notifyListeners();
       
       return LoginResult.success();
@@ -163,6 +174,11 @@ class AuthStateManager extends ChangeNotifier {
     // This allows users to have their email/password pre-filled next time
     // but prevents auto-login until they manually log in again
     
+    // Clear chat state and disconnect WebSocket service
+    _chatStateManager.clear();
+    _chatWebSocketService.closeWebSocket();
+    debugPrint('AuthStateManager: WebSocket disconnected and chat state cleared');
+    
     debugPrint('AuthStateManager: Logout complete - session cleared, remember me preserved');
     notifyListeners();
   }
@@ -207,6 +223,9 @@ class AuthStateManager extends ChangeNotifier {
   Future<void> handleSuccessfulLogin(User user, {bool rememberMe = false}) async {
     debugPrint('AuthStateManager: Handling successful login for ${user.email}');
     await _updateAuthState(user, rememberMe);
+    
+    // Initialize WebSocket connection after successful login
+    await _initializeWebSocketConnection();
   }
 
   /// Internal method to update authentication state
@@ -269,6 +288,27 @@ class AuthStateManager extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyIsLoggedIn);
     await prefs.remove(_keyCurrentUser);
+  }
+
+  /// Initialize WebSocket connection with current user
+  Future<void> _initializeWebSocketConnection() async {
+    if (_currentUser != null) {
+      try {
+        debugPrint('AuthStateManager: Initializing WebSocket connection for user ${_currentUser!.id}');
+        await _chatWebSocketService.connectWebSocket(
+          userId: _currentUser!.id,
+          token: _currentUser!.token,
+        );
+        
+        // Initialize chat state manager with user context
+        await _chatStateManager.initialize(_currentUser!.id.toString());
+        
+        debugPrint('AuthStateManager: WebSocket connection and chat state initialized successfully');
+      } catch (e) {
+        debugPrint('AuthStateManager: Failed to initialize WebSocket connection: $e');
+        // Continue without WebSocket - the service will retry automatically
+      }
+    }
   }
 }
 

@@ -17,25 +17,23 @@ class ApiException implements Exception {
 }
 
 class NetworkException extends ApiException {
-  const NetworkException(String message) : super(message);
+  const NetworkException(super.message);
 }
 
 class ServerException extends ApiException {
-  const ServerException(String message, {int? statusCode})
-      : super(message, statusCode: statusCode);
+  const ServerException(super.message, {super.statusCode});
 }
 
 class AuthenticationException extends ApiException {
-  const AuthenticationException(String message)
-      : super(message, statusCode: 401);
+  const AuthenticationException(super.message) : super(statusCode: 401);
 }
 
 class ValidationException extends ApiException {
   final Map<String, dynamic>? validationErrors;
 
   const ValidationException(
-    String message, {
+    super.message, {
     this.validationErrors,
-    int? statusCode,
-  }) : super(message, statusCode: statusCode);
+    super.statusCode,
+  });
 }

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:hichat_app/constants/app_constants.dart';
 import 'package:provider/provider.dart';
+import 'package:shimmer/shimmer.dart';
 import '../../models/chat.dart';
-import '../../models/user.dart';
 import '../../models/message.dart';
 import '../../constants/app_theme.dart';
 import '../../services/auth_state_manager.dart';
+import '../../services/chat_state_manager.dart';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -14,107 +16,327 @@ class ChatListScreen extends StatefulWidget {
 }
 
 class _ChatListScreenState extends State<ChatListScreen> {
-  List<Chat> _chats = [];
-  bool _isLoading = true;
-
   @override
   void initState() {
     super.initState();
-    _loadChats();
+    // ChatStateManager is automatically initialized via AuthStateManager
+    // No need to manually load chats here
   }
-
-  Future<void> _loadChats() async {
-    setState(() {
-      _isLoading = true;
-    });
-
+  
+  Future<void> _refreshChats() async {
+    final chatStateManager = context.read<ChatStateManager>();
+    
     try {
-      // TODO: Replace with actual API call
-      await Future.delayed(const Duration(seconds: 1)); // Simulate loading
+      debugPrint('ChatListScreen: Starting refresh...');
+      // Use the new refresh method that properly manages loading states
+      await chatStateManager.refreshChats();
       
-      // Mock data for demonstration
-      _chats = _generateMockChats();
-    } catch (e) {
-      if (mounted) {
+      // Show success feedback only if no error occurred
+      if (mounted && !chatStateManager.hasError) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load chats: $e')),
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text('Chats refreshed successfully'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
         );
       }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+    } catch (e) {
+      // Error handling is already done in ChatStateManager
+      debugPrint('Refresh failed: $e');
+      
+      // Show error feedback if the error isn't already being displayed
+      if (mounted && !chatStateManager.hasError) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Failed to refresh chats: $e')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        );
       }
     }
   }
 
-  List<Chat> _generateMockChats() {
-    final now = DateTime.now();
-    return [
-      Chat(
-        id: '1',
-        name: 'John Doe',
-        type: ChatType.direct,
-        participantIds: ['user1', 'currentUser'],
-        participants: [
-          User(
-            id: 1,
-            username: 'John Doe',
-            email: 'john@example.com',
-            isOnline: true,
-            createdAt: now.subtract(const Duration(days: 30)),
-          ),
-        ],
-        lastMessage: Message(
-          id: 'msg1',
-          chatId: '1',
-          senderId: 'user1',
-          content: 'Hey! How are you doing?',
-          timestamp: now.subtract(const Duration(minutes: 5)),
-        ),
-        lastActivity: now.subtract(const Duration(minutes: 5)),
-        unreadCount: 2,
-        createdAt: now.subtract(const Duration(days: 1)),
-      ),
-      Chat(
-        id: '2',
-        name: 'Flutter Developers',
-        type: ChatType.group,
-        participantIds: ['user2', 'user3', 'currentUser'],
-        participants: [
-          User(
-            id: 2,
-            username: 'Alice Smith',
-            email: 'alice@example.com',
-            isOnline: false,
-            lastSeen: now.subtract(const Duration(hours: 2)),
-            createdAt: now.subtract(const Duration(days: 60)),
-          ),
-          User(
-            id: 3,
-            username: 'Bob Johnson',
-            email: 'bob@example.com',
-            isOnline: true,
-            createdAt: now.subtract(const Duration(days: 45)),
-          ),
-        ],
-        lastMessage: Message(
-          id: 'msg2',
-          chatId: '2',
-          senderId: 'user2',
-          content: 'Check out this new Flutter update!',
-          timestamp: now.subtract(const Duration(hours: 1)),
-        ),
-        lastActivity: now.subtract(const Duration(hours: 1)),
-        unreadCount: 0,
-        createdAt: now.subtract(const Duration(days: 7)),
-      ),
-    ];
-  }
+
 
   void _navigateToChat(Chat chat) {
     Navigator.of(context).pushNamed('/chat', arguments: chat);
+  }
+
+  Widget _buildShimmerLoading() {
+    return ListView.builder(
+      itemCount: 8,
+      itemBuilder: (context, index) {
+        return Shimmer.fromColors(
+          baseColor: Colors.grey[300]!,
+          highlightColor: Colors.grey[100]!,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                // Avatar shimmer
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                
+                // Content shimmer
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Name shimmer
+                      Container(
+                        height: 16,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      
+                      // Message shimmer
+                      Container(
+                        height: 14,
+                        width: MediaQuery.of(context).size.width * 0.6,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // Time shimmer
+                Container(
+                  width: 40,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildErrorState(String errorMessage, ChatStateManager chatStateManager) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Error icon
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.error_outline,
+                size: 48,
+                color: Colors.red[400],
+              ),
+            ),
+            const SizedBox(height: 24),
+            
+            // Error title
+            Text(
+              'Something went wrong',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Colors.red[700],
+              ),
+            ),
+            const SizedBox(height: 8),
+            
+            // Error message
+            Text(
+              errorMessage,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 32),
+            
+            // Retry button
+            ElevatedButton.icon(
+              onPressed: () async {
+                chatStateManager.clearError();
+                await _refreshChats();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Try Again'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(ChatStateManager chatStateManager) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Empty state illustration
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.chat_bubble_outline,
+                size: 64,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 24),
+            
+            // Empty state title
+            Text(
+              'No chats yet',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 8),
+            
+            // Empty state description
+            Text(
+              'Start a conversation by tapping the + button below',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // Connection status
+            if (!chatStateManager.isConnected) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.orange[200]!),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.orange[600]!),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Connecting...',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorBanner(String errorMessage, ChatStateManager chatStateManager) {
+    return Container(
+      width: double.infinity,
+      color: Colors.red[50],
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.red[600],
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Connection issue: $errorMessage',
+              style: TextStyle(
+                color: Colors.red[700],
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              chatStateManager.clearError();
+            },
+            child: Text(
+              'Dismiss',
+              style: TextStyle(
+                color: Colors.red[600],
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _handleLogout() async {
@@ -177,12 +399,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
               backgroundColor: Colors.red,
             ),
           );
-        }
       }
     }
   }
 
-  @override
+
+}  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -193,6 +415,19 @@ class _ChatListScreenState extends State<ChatListScreen> {
             tooltip: 'Camera',
             onPressed: () {
               Navigator.pushNamed(context, '/camera');
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.location_on),
+            tooltip: 'Location',
+            onPressed: () {
+              final authManager = context.read<AuthStateManager>();
+              final username = authManager.currentUser?.username ?? 'User';
+              Navigator.pushNamed(
+                context, 
+                AppConstants.locationSharingRoute,
+                arguments: username,
+              );
             },
           ),
           IconButton(
@@ -232,35 +467,55 @@ class _ChatListScreenState extends State<ChatListScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _chats.isEmpty
-              ? const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.chat_bubble_outline,
-                        size: 64,
-                        color: Colors.grey,
-                      ),
-                      SizedBox(height: 16),
-                      Text(
-                        'No chats yet',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
+      body: Consumer<ChatStateManager>(
+        builder: (context, chatStateManager, child) {
+          final chats = chatStateManager.chats;
+          final isLoading = chatStateManager.isLoading;
+          final hasError = chatStateManager.hasError;
+          final errorMessage = chatStateManager.errorMessage;
+          
+          // Show shimmer loading effect
+          if (isLoading && chats.isEmpty) {
+            return _buildShimmerLoading();
+          }
+          
+          // Show error state with retry option
+          if (hasError && chats.isEmpty) {
+            return _buildErrorState(errorMessage!, chatStateManager);
+          }
+          
+          // Show empty state
+          if (chats.isEmpty && !isLoading) {
+            return _buildEmptyState(chatStateManager);
+          }
+          
+          // Show chat list with pull-to-refresh
+          return RefreshIndicator(
+            onRefresh: _refreshChats,
+            color: AppColors.primary,
+            child: Column(
+              children: [
+                // Show subtle loading indicator when refreshing with existing chats
+                if (isLoading && chats.isNotEmpty)
+                  SizedBox(
+                    height: 3,
+                    child: LinearProgressIndicator(
+                      backgroundColor: Colors.transparent,
+                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                    ),
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadChats,
+                
+                // Show error banner if there's an error but we have cached chats
+                if (hasError && chats.isNotEmpty)
+                  _buildErrorBanner(errorMessage!, chatStateManager),
+                
+                // Chat list
+                Expanded(
                   child: ListView.builder(
-                    itemCount: _chats.length,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: chats.length,
                     itemBuilder: (context, index) {
-                      final chat = _chats[index];
+                      final chat = chats[index];
                       return AnimatedContainer(
                         duration: Duration(milliseconds: 300 + (index * 50)),
                         curve: Curves.easeOutCubic,
@@ -272,9 +527,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     },
                   ),
                 ),
+              ],
+            ),
+          );
+        },
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // TODO: Navigate to new chat screen
+          Navigator.of(context).pushNamed('/user-search');
         },
         heroTag: "new_chat_fab",
         elevation: 6,
@@ -295,7 +555,8 @@ class _ChatListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const currentUserId = 'currentUser'; // TODO: Get from auth service
+    final chatStateManager = context.read<ChatStateManager>();
+    final currentUserId = chatStateManager.getCurrentUserIdForUI();
     
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
@@ -316,8 +577,9 @@ class _ChatListItem extends StatelessWidget {
                   height: 40,
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) {
+                    final displayName = _getSafeDisplayName(chat, currentUserId);
                     return Text(
-                      chat.getDisplayName(currentUserId)[0].toUpperCase(),
+                      displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -327,7 +589,10 @@ class _ChatListItem extends StatelessWidget {
                 ),
               )
             : Text(
-                chat.getDisplayName(currentUserId)[0].toUpperCase(),
+                () {
+                  final displayName = _getSafeDisplayName(chat, currentUserId);
+                  return displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
+                }(),
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
@@ -335,20 +600,12 @@ class _ChatListItem extends StatelessWidget {
               ),
       ),
       title: Text(
-        chat.getDisplayName(currentUserId),
+        _getSafeDisplayName(chat, currentUserId),
         style: TextStyle(
           fontWeight: chat.hasUnreadMessages ? FontWeight.bold : FontWeight.normal,
         ),
       ),
-      subtitle: Text(
-        chat.lastMessage?.content ?? 'No messages yet',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: chat.hasUnreadMessages ? Colors.black87 : Colors.grey[600],
-          fontWeight: chat.hasUnreadMessages ? FontWeight.w500 : FontWeight.normal,
-        ),
-      ),
+      subtitle: _buildLastMessageRow(chat),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -384,6 +641,88 @@ class _ChatListItem extends StatelessWidget {
       onTap: onTap,
       ),
     );
+  }
+
+  /// Build last message row with appropriate icon for media messages
+  Widget _buildLastMessageRow(Chat chat) {
+    final lastMessage = chat.lastMessage;
+    
+    if (lastMessage == null) {
+      return Text(
+        'No messages yet',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: chat.hasUnreadMessages ? Colors.black87 : Colors.grey[600],
+          fontWeight: chat.hasUnreadMessages ? FontWeight.w500 : FontWeight.normal,
+        ),
+      );
+    }
+
+    IconData? messageIcon;
+    String messageText;
+    
+    // Determine icon and text based on message type
+    switch (lastMessage.type) {
+      case MessageType.image:
+        messageIcon = Icons.photo;
+        messageText = 'Photo';
+        break;
+      case MessageType.video:
+        messageIcon = Icons.videocam;
+        messageText = 'Video';
+        break;
+      case MessageType.audio:
+        messageIcon = Icons.mic;
+        messageText = 'Voice message';
+        break;
+      case MessageType.file:
+        messageIcon = Icons.attach_file;
+        messageText = 'File';
+        break;
+      case MessageType.text:
+        messageIcon = null;
+        messageText = lastMessage.content;
+        break;
+    }
+
+    return Row(
+      children: [
+        // Show icon for media messages
+        if (messageIcon != null) ...[
+          Icon(
+            messageIcon,
+            size: 16,
+            color: chat.hasUnreadMessages ? Colors.black87 : Colors.grey[600],
+          ),
+          const SizedBox(width: 6),
+        ],
+        
+        // Message text
+        Expanded(
+          child: Text(
+            messageText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: chat.hasUnreadMessages ? Colors.black87 : Colors.grey[600],
+              fontWeight: chat.hasUnreadMessages ? FontWeight.w500 : FontWeight.normal,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _getSafeDisplayName(Chat chat, String currentUserId) {
+    try {
+      return chat.getDisplayName(currentUserId);
+    } catch (e) {
+      // Fallback if there's an error getting display name
+      debugPrint('Error getting display name for chat ${chat.id}: $e');
+      if (chat.name.isNotEmpty) return chat.name;
+      return 'New Chat';
+    }
   }
 
   String _formatTime(DateTime time) {

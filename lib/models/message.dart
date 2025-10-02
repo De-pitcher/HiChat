@@ -73,6 +73,13 @@ class Message {
   bool get isSending => status == MessageStatus.sending;
   bool get isFailed => status == MessageStatus.failed;
 
+  // Convenience getters for metadata
+  String? get fileUrl => metadata?['file_url']?.toString();
+  Map<String, dynamic>? get senderInfo => metadata?['sender'] as Map<String, dynamic>?;
+  String? get senderUsername => senderInfo?['username']?.toString();
+  String? get senderEmail => senderInfo?['email']?.toString();
+  String? get senderImageUrl => senderInfo?['image_url']?.toString();
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -88,23 +95,91 @@ class Message {
   }
 
   factory Message.fromJson(Map<String, dynamic> json) {
+    // Handle sender information
+    Map<String, dynamic>? senderData;
+    if (json['sender'] != null) {
+      senderData = json['sender'] as Map<String, dynamic>;
+    }
+
+    // Handle file URL for media messages
+    String? fileUrl;
+    if (json['file'] != null) {
+      fileUrl = json['file'].toString();
+    }
+
+    // Create metadata with file info if available
+    Map<String, dynamic>? metadata = json['metadata'] as Map<String, dynamic>?;
+    if (fileUrl != null || senderData != null) {
+      metadata ??= {};
+      if (fileUrl != null) {
+        metadata['file_url'] = fileUrl;
+      }
+      if (senderData != null) {
+        metadata['sender'] = senderData;
+      }
+    }
+
     return Message(
-      id: json['id'] as String,
-      chatId: json['chatId'] as String,
-      senderId: json['senderId'] as String,
-      content: json['content'] as String,
-      type: MessageType.values.firstWhere(
-        (e) => e.name == json['type'],
-        orElse: () => MessageType.text,
-      ),
-      status: MessageStatus.values.firstWhere(
-        (e) => e.name == json['status'],
-        orElse: () => MessageStatus.sent,
-      ),
-      timestamp: DateTime.fromMillisecondsSinceEpoch(json['timestamp'] as int),
-      replyToMessageId: json['replyToMessageId'] as String?,
-      metadata: json['metadata'] as Map<String, dynamic>?,
+      id: (json['id'] ?? json['message_id'])?.toString() ?? '',
+      chatId: (json['chatId'] ?? json['chat_id'])?.toString() ?? '',
+      senderId: (json['senderId'] ?? json['sender_id'] ?? senderData?['id'])?.toString() ?? '',
+      content: json['content']?.toString() ?? '',
+      type: _parseMessageType(json['type'] ?? json['message_type']),
+      status: _parseMessageStatus(json['status'] ?? json['read_status']),
+      timestamp: _parseTimestamp(json['timestamp'] ?? json['created_at']),
+      replyToMessageId: (json['replyToMessageId'] ?? json['reply_to_message_id'])?.toString(),
+      metadata: metadata,
     );
+  }
+
+  static MessageType _parseMessageType(dynamic type) {
+    if (type == null) return MessageType.text;
+    final typeStr = type.toString().toLowerCase();
+    switch (typeStr) {
+      case 'text':
+        return MessageType.text;
+      case 'image':
+        return MessageType.image;
+      case 'file':
+        return MessageType.file;
+      case 'audio':
+        return MessageType.audio;
+      case 'video':
+        return MessageType.video;
+      default:
+        return MessageType.text;
+    }
+  }
+
+  static MessageStatus _parseMessageStatus(dynamic status) {
+    if (status == null) return MessageStatus.sent;
+    final statusStr = status.toString().toLowerCase();
+    switch (statusStr) {
+      case 'sending':
+        return MessageStatus.sending;
+      case 'sent':
+        return MessageStatus.sent;
+      case 'delivered':
+        return MessageStatus.delivered;
+      case 'read':
+        return MessageStatus.read;
+      case 'failed':
+        return MessageStatus.failed;
+      default:
+        return MessageStatus.sent;
+    }
+  }
+
+  static DateTime _parseTimestamp(dynamic timestamp) {
+    if (timestamp == null) return DateTime.now();
+    
+    if (timestamp is int) {
+      return DateTime.fromMillisecondsSinceEpoch(timestamp);
+    } else if (timestamp is String) {
+      return DateTime.tryParse(timestamp) ?? DateTime.now();
+    }
+    
+    return DateTime.now();
   }
 
   @override

@@ -70,7 +70,7 @@ class _AnimatedBorderWidgetState extends State<AnimatedBorderWidget>
           ),
           // Content
           ClipOval(
-            child: Container(
+            child: SizedBox(
               width: widget.size - (widget.borderWidth * 2 + 8),
               height: widget.size - (widget.borderWidth * 2 + 8),
               child: widget.child,
@@ -110,7 +110,7 @@ class AnimatedBorderPainter extends CustomPainter {
       final sweepAngle = math.pi / 3;
       final opacity = 1.0 - (i * 0.3);
       
-      paint.color = borderColor.withOpacity(opacity);
+      paint.color = borderColor.withValues(alpha: opacity);
       
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),

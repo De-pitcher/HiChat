@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'user.dart';
 import 'message.dart';
 
@@ -72,10 +73,18 @@ class Chat {
   // Get the other user in a direct chat
   User? getOtherUser(dynamic currentUserId) {
     if (!isDirectChat) return null;
-    return participants.firstWhere(
-      (user) => user.id.toString() != currentUserId.toString(),
-      orElse: () => throw Exception('Other user not found in direct chat'),
-    );
+    
+    // If no participants, return null instead of throwing exception
+    if (participants.isEmpty) return null;
+    
+    try {
+      return participants.firstWhere(
+        (user) => user.id.toString() != currentUserId.toString(),
+      );
+    } catch (e) {
+      // If no other user found, return null instead of throwing exception
+      return null;
+    }
   }
 
   // Get display name for the chat
@@ -83,7 +92,23 @@ class Chat {
     if (isGroupChat) return name;
     
     final otherUser = getOtherUser(currentUserId);
-    return otherUser?.username ?? 'Unknown User';
+    if (otherUser != null) {
+      return otherUser.username;
+    }
+    
+    // Debug logging to understand the issue
+    debugPrint('Chat.getDisplayName: Failed to find other user for chat $id');
+    debugPrint('  - currentUserId: $currentUserId');
+    debugPrint('  - participants.length: ${participants.length}');
+    debugPrint('  - participantIds: $participantIds');
+    if (participants.isNotEmpty) {
+      debugPrint('  - participant user IDs: ${participants.map((u) => u.id).toList()}');
+    }
+    debugPrint('  - chat.name: "$name"');
+    
+    // Fallback: if no participants or other user not found, use chat name or default
+    if (name.isNotEmpty) return name;
+    return 'New Chat';
   }
 
   // Get display image for the chat
@@ -91,6 +116,9 @@ class Chat {
     if (isGroupChat) return groupImageUrl;
     
     final otherUser = getOtherUser(currentUserId);
+    if (otherUser == null) {
+      debugPrint('Chat.getDisplayImage: Failed to find other user for chat $id');
+    }
     return otherUser?.profileImageUrl;
   }
 
@@ -112,28 +140,94 @@ class Chat {
   }
 
   factory Chat.fromJson(Map<String, dynamic> json) {
+    final chatType = _parseChatType(json['type'] ?? json['chat_type']);
+    final participants = _parseParticipants(json['participants']);
+    
+    // For direct chats, try to derive name from participants if not provided
+    String chatName = json['name']?.toString() ?? json['chat_name']?.toString() ?? '';
+    if (chatName.isEmpty && chatType == ChatType.direct && participants.isNotEmpty) {
+      // Try to use the first participant's username as the chat name
+      chatName = participants.first.username;
+      debugPrint('Chat.fromJson: Derived direct chat name from participant: "$chatName"');
+    }
+    if (chatName.isEmpty) {
+      chatName = 'Chat'; // Final fallback
+    }
+    
     return Chat(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      type: ChatType.values.firstWhere(
-        (e) => e.name == json['type'],
-        orElse: () => ChatType.direct,
-      ),
-      participantIds: List<String>.from(json['participantIds'] as List),
-      participants: (json['participants'] as List?)
-              ?.map((userJson) => User.fromJson(userJson as Map<String, dynamic>))
-              .toList() ??
-          [],
-      lastMessage: json['lastMessage'] != null
-          ? Message.fromJson(json['lastMessage'] as Map<String, dynamic>)
-          : null,
-      lastActivity: DateTime.fromMillisecondsSinceEpoch(json['lastActivity'] as int),
-      unreadCount: json['unreadCount'] as int? ?? 0,
-      groupImageUrl: json['groupImageUrl'] as String?,
-      description: json['description'] as String?,
-      createdBy: json['createdBy'] as String?,
-      createdAt: DateTime.fromMillisecondsSinceEpoch(json['createdAt'] as int),
+      id: (json['id'] ?? json['chat_id'])?.toString() ?? '',
+      name: chatName,
+      type: chatType,
+      participantIds: _parseParticipantIds(json['participantIds'] ?? json['participant_ids'] ?? json['participants']),
+      participants: participants,
+      lastMessage: _parseLastMessage(json['lastMessage'] ?? json['last_message']),
+      lastActivity: _parseDateTime(json['lastActivity'] ?? json['last_activity'] ?? json['updated_at']),
+      unreadCount: (json['unreadCount'] ?? json['unread_count'] ?? 0) as int,
+      groupImageUrl: json['groupImageUrl']?.toString() ?? json['group_image_url']?.toString(),
+      description: json['description']?.toString(),
+      createdBy: (json['createdBy'] ?? json['created_by'])?.toString(),
+      createdAt: _parseDateTime(json['createdAt'] ?? json['created_at']),
     );
+  }
+
+  static ChatType _parseChatType(dynamic type) {
+    if (type == null) return ChatType.direct;
+    final typeStr = type.toString().toLowerCase();
+    return typeStr == 'group' ? ChatType.group : ChatType.direct;
+  }
+
+  static List<String> _parseParticipantIds(dynamic participants) {
+    if (participants == null) return [];
+    
+    if (participants is List) {
+      return participants.map((p) {
+        if (p is Map<String, dynamic>) {
+          return (p['id'] ?? p['user_id'])?.toString() ?? '';
+        }
+        return p.toString();
+      }).where((id) => id.isNotEmpty).toList();
+    }
+    
+    return [];
+  }
+
+  static List<User> _parseParticipants(dynamic participants) {
+    if (participants == null) return [];
+    
+    if (participants is List) {
+      return participants
+          .where((p) => p is Map<String, dynamic>)
+          .map((p) => User.fromJson(p as Map<String, dynamic>))
+          .toList();
+    }
+    
+    return [];
+  }
+
+  static Message? _parseLastMessage(dynamic lastMessage) {
+    if (lastMessage == null) return null;
+    
+    if (lastMessage is Map<String, dynamic>) {
+      try {
+        return Message.fromJson(lastMessage);
+      } catch (e) {
+        return null;
+      }
+    }
+    
+    return null;
+  }
+
+  static DateTime _parseDateTime(dynamic dateTime) {
+    if (dateTime == null) return DateTime.now();
+    
+    if (dateTime is int) {
+      return DateTime.fromMillisecondsSinceEpoch(dateTime);
+    } else if (dateTime is String) {
+      return DateTime.tryParse(dateTime) ?? DateTime.now();
+    }
+    
+    return DateTime.now();
   }
 
   @override

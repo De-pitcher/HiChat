@@ -261,7 +261,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             width: 133,
             height: 115,
             decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withOpacity(0.1),
+              color: theme.colorScheme.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
@@ -321,7 +321,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           filled: true,
           fillColor: theme.brightness == Brightness.dark 
-            ? theme.colorScheme.surface.withOpacity(0.8)
+            ? theme.colorScheme.surface.withValues(alpha: 0.8)
             : theme.colorScheme.surface,
         ),
         style: TextStyle(
@@ -369,7 +369,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           filled: true,
           fillColor: theme.brightness == Brightness.dark 
-            ? theme.colorScheme.surface.withOpacity(0.8)
+            ? theme.colorScheme.surface.withValues(alpha: 0.8)
             : theme.colorScheme.surface,
         ),
         style: TextStyle(
@@ -417,7 +417,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           filled: true,
           fillColor: theme.brightness == Brightness.dark 
-            ? theme.colorScheme.surface.withOpacity(0.8)
+            ? theme.colorScheme.surface.withValues(alpha: 0.8)
             : theme.colorScheme.surface,
         ),
         style: TextStyle(
@@ -496,7 +496,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             borderRadius: BorderRadius.circular(26),
           ),
           elevation: 0,
-          disabledBackgroundColor: theme.colorScheme.primary.withOpacity(0.6),
+          disabledBackgroundColor: theme.colorScheme.primary.withValues(alpha: 0.6),
         ),
         child: _isLoading
             ? const SizedBox(

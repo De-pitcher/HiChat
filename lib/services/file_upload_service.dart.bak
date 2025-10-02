@@ -1,0 +1,470 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart' as http_parser;
+import '../constants/app_constants.dart';
+import 'camera_service.dart' as camera;
+import 'local_media_cache_service.dart' as cache;
+
+// Type aliases for backward compatibility
+typedef CameraResult = camera.CameraResult;
+typedef MediaType = cache.MediaType;
+
+/// Service for uploading media files (images, videos, audio) to the chat server
+/// 
+/// Handles file upload with progress tracking, retry mechanisms, and proper
+/// error handling for multimedia messages in chat conversations.
+class FileUploadService {
+  static const String _tag = 'FileUploadService';
+  static const String _uploadEndpoint = '/api/media/';
+  static const Duration _uploadTimeout = Duration(seconds: 30);
+  static const int _maxRetries = 3;
+  
+  // Base URL from app constants, fallback to local development
+  static const String _baseUrl = 'https://chatcornerbackend-production.up.railway.app';
+  
+  /// Upload media file from camera service result
+  /// 
+  /// [result] - CameraResult containing Base64 encoded media data
+  /// [chatId] - ID of the chat where the media will be sent
+  /// [onProgress] - Optional callback for upload progress (0.0 to 1.0)
+  /// 
+  /// Returns [UploadResult] with file URL and metadata
+  static Future<UploadResult> uploadMedia(
+    CameraResult result,
+    String chatId, {
+    Function(double)? onProgress,
+  }) async {
+    debugPrint('$_tag: Starting media upload for chat: $chatId');
+    
+    try {
+      // Validate file size
+      if (result.size > AppConstants.maxFileSize) {
+        throw FileUploadException(
+          'File size (${result.formattedSize}) exceeds maximum allowed size (${_formatBytes(AppConstants.maxFileSize)})',
+          FileUploadErrorType.fileTooLarge,
+        );
+      }
+      
+      // Validate file type
+      _validateFileType(result.type);
+      
+      // Convert Base64 to bytes
+      final Uint8List fileBytes = base64Decode(result.data);
+      
+      // Create multipart request
+      final request = await _createMultipartRequest(fileBytes, result.type);
+      
+      // Set progress callback if provided
+      if (onProgress != null) {
+        onProgress(0.1); // Initial progress
+      }
+      
+      // Send request with retry mechanism
+      final response = await _sendWithRetry(request, onProgress);
+      
+      // Parse response
+      final uploadResult = await _parseUploadResponse(response, result);
+      
+      debugPrint('$_tag: Upload successful - URL: ${uploadResult.fileUrl}');
+      return uploadResult;
+      
+    } catch (e) {
+      debugPrint('$_tag: Upload failed: $e');
+      if (onProgress != null) {
+        onProgress(0.0); // Reset progress on error
+      }
+      rethrow;
+    }
+  }
+  
+  /// Upload multiple media files in bulk
+  /// 
+  /// [results] - List of CameraResult objects to upload
+  /// [chatId] - ID of the chat where media will be sent
+  /// [onProgress] - Optional callback for overall progress
+  /// 
+  /// Returns list of [UploadResult] objects
+  static Future<List<UploadResult>> uploadMultipleMedia(
+    List<CameraResult> results,
+    String chatId, {
+    Function(double)? onProgress,
+  }) async {
+    debugPrint('$_tag: Starting bulk upload of ${results.length} files');
+    
+    final List<UploadResult> uploadResults = [];
+    
+    for (int i = 0; i < results.length; i++) {
+      final result = results[i];
+      
+      try {
+        final uploadResult = await uploadMedia(
+          result,
+          chatId,
+          onProgress: (fileProgress) {
+            if (onProgress != null) {
+              // Calculate overall progress
+              final overallProgress = (i + fileProgress) / results.length;
+              onProgress(overallProgress);
+            }
+          },
+        );
+        
+        uploadResults.add(uploadResult);
+        
+      } catch (e) {
+        debugPrint('$_tag: Failed to upload file ${i + 1}/${results.length}: $e');
+        
+        // Create failed result
+        uploadResults.add(UploadResult(
+          fileUrl: '',
+          fileName: 'upload_failed_${DateTime.now().millisecondsSinceEpoch}',
+          fileSize: result.size,
+          fileType: result.type,
+          success: false,
+          error: e.toString(),
+        ));
+      }
+    }
+    
+    debugPrint('$_tag: Bulk upload completed - ${uploadResults.where((r) => r.success).length}/${results.length} successful');
+    return uploadResults;
+  }
+  
+  /// Create multipart HTTP request for file upload
+  static Future<http.MultipartRequest> _createMultipartRequest(
+    Uint8List fileBytes,
+    MediaType mediaType,
+  ) async {
+    final uri = Uri.parse('$_baseUrl$_uploadEndpoint');
+    final request = http.MultipartRequest('POST', uri);
+    
+    // Determine file extension and MIME type
+    final fileExtension = _getFileExtension(mediaType);
+    final mimeType = _getMimeType(mediaType);
+    final fileName = 'chat_media_${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
+    
+    // Add file to request
+    request.files.add(http.MultipartFile.fromBytes(
+      'file',
+      fileBytes,
+      filename: fileName,
+      contentType: http_parser.MediaType.parse(mimeType),
+    ));
+    
+    // Add media type parameter
+    request.fields['type'] = mediaType.name;
+    
+    // Add headers
+    request.headers.addAll({
+      'Accept': 'application/json',
+      'User-Agent': 'HiChat-Flutter/1.0.0',
+    });
+    
+    debugPrint('$_tag: Created multipart request - File: $fileName, Size: ${fileBytes.length} bytes');
+    return request;
+  }
+  
+  /// Send request with retry mechanism
+  static Future<http.StreamedResponse> _sendWithRetry(
+    http.MultipartRequest request,
+    Function(double)? onProgress,
+  ) async {
+    for (int attempt = 1; attempt <= _maxRetries; attempt++) {
+      try {
+        debugPrint('$_tag: Upload attempt $attempt/$_maxRetries');
+        
+        if (onProgress != null) {
+          onProgress(0.2 + (0.1 * attempt)); // Progress during retries
+        }
+        
+        final response = await request.send().timeout(_uploadTimeout);
+        
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          if (onProgress != null) {
+            onProgress(1.0); // Complete
+          }
+          return response;
+        } else {
+          debugPrint('$_tag: Upload failed with status: ${response.statusCode}');
+          
+          if (attempt == _maxRetries) {
+            throw FileUploadException(
+              'Upload failed with status ${response.statusCode}',
+              FileUploadErrorType.serverError,
+            );
+          }
+          
+          // Wait before retry
+          await Future.delayed(Duration(seconds: attempt * 2));
+        }
+        
+      } on SocketException catch (e) {
+        debugPrint('$_tag: Network error on attempt $attempt: $e');
+        if (attempt == _maxRetries) {
+          throw FileUploadException(
+            'Network error: Please check your internet connection',
+            FileUploadErrorType.networkError,
+          );
+        }
+        await Future.delayed(Duration(seconds: attempt * 2));
+        
+      } on HttpException catch (e) {
+        debugPrint('$_tag: HTTP error on attempt $attempt: $e');
+        if (attempt == _maxRetries) {
+          throw FileUploadException(
+            'HTTP error: $e',
+            FileUploadErrorType.httpError,
+          );
+        }
+        await Future.delayed(Duration(seconds: attempt * 2));
+        
+      } on Exception catch (e) {
+        debugPrint('$_tag: Unexpected error on attempt $attempt: $e');
+        if (attempt == _maxRetries) {
+          throw FileUploadException(
+            'Upload failed: $e',
+            FileUploadErrorType.unknown,
+          );
+        }
+        await Future.delayed(Duration(seconds: attempt * 2));
+      }
+    }
+    
+    throw FileUploadException(
+      'Upload failed after $_maxRetries attempts',
+      FileUploadErrorType.maxRetriesExceeded,
+    );
+  }
+  
+  /// Parse upload response
+  static Future<UploadResult> _parseUploadResponse(
+    http.StreamedResponse response,
+    CameraResult originalResult,
+  ) async {
+    try {
+      final responseBody = await response.stream.bytesToString();
+      debugPrint('$_tag: Upload response: $responseBody');
+      
+      final Map<String, dynamic> jsonData = json.decode(responseBody);
+      
+      // Extract file URL from response
+      final String? fileUrl = jsonData['file_url'] as String?;
+      
+      if (fileUrl == null || fileUrl.isEmpty) {
+        throw FileUploadException(
+          'Invalid response: missing file_url',
+          FileUploadErrorType.invalidResponse,
+        );
+      }
+      
+      return UploadResult(
+        fileUrl: fileUrl,
+        fileName: _extractFileNameFromUrl(fileUrl),
+        fileSize: originalResult.size,
+        fileType: originalResult.type,
+        success: true,
+      );
+      
+    } catch (e) {
+      debugPrint('$_tag: Error parsing response: $e');
+      throw FileUploadException(
+        'Failed to parse upload response: $e',
+        FileUploadErrorType.responseParsingError,
+      );
+    }
+  }
+  
+  /// Validate file type against allowed types
+  static void _validateFileType(MediaType mediaType) {
+    switch (mediaType) {
+      case MediaType.image:
+        // Images are generally allowed
+        break;
+      case MediaType.video:
+        // Videos are allowed but might need size validation
+        break;
+      case MediaType.audio:
+        // Audio files are allowed
+        break;
+    }
+  }
+  
+  /// Get file extension for media type
+  static String _getFileExtension(MediaType mediaType) {
+    switch (mediaType) {
+      case MediaType.image:
+        return 'jpg';
+      case MediaType.video:
+        return 'mp4';
+      case MediaType.audio:
+        return 'm4a';
+    }
+  }
+  
+  /// Get MIME type for media type
+  static String _getMimeType(MediaType mediaType) {
+    switch (mediaType) {
+      case MediaType.image:
+        return 'image/jpeg';
+      case MediaType.video:
+        return 'video/mp4';
+      case MediaType.audio:
+        return 'audio/mp4';
+    }
+  }
+  
+  /// Extract filename from file URL
+  static String _extractFileNameFromUrl(String fileUrl) {
+    try {
+      final uri = Uri.parse(fileUrl);
+      final pathSegments = uri.pathSegments;
+      if (pathSegments.isNotEmpty) {
+        return pathSegments.last;
+      }
+    } catch (e) {
+      debugPrint('$_tag: Error extracting filename from URL: $e');
+    }
+    return 'media_file_${DateTime.now().millisecondsSinceEpoch}';
+  }
+  
+  /// Format bytes to human readable format
+  static String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+}
+
+/// Result of a file upload operation
+class UploadResult {
+  final String fileUrl;
+  final String fileName;
+  final int fileSize;
+  final MediaType fileType;
+  final bool success;
+  final String? error;
+  final Map<String, dynamic>? metadata;
+  
+  const UploadResult({
+    required this.fileUrl,
+    required this.fileName,
+    required this.fileSize,
+    required this.fileType,
+    required this.success,
+    this.error,
+    this.metadata,
+  });
+  
+  /// Get formatted file size
+  String get formattedSize => FileUploadService._formatBytes(fileSize);
+  
+  /// Check if upload was successful
+  bool get isSuccess => success && error == null;
+  
+  /// Get file extension from URL
+  String get fileExtension {
+    try {
+      final uri = Uri.parse(fileUrl);
+      final path = uri.path;
+      final lastDot = path.lastIndexOf('.');
+      if (lastDot != -1 && lastDot < path.length - 1) {
+        return path.substring(lastDot + 1);
+      }
+    } catch (e) {
+      debugPrint('Error extracting file extension: $e');
+    }
+    return 'unknown';
+  }
+  
+  @override
+  String toString() {
+    return 'UploadResult(fileUrl: $fileUrl, fileName: $fileName, success: $success, error: $error)';
+  }
+}
+
+/// Upload progress information
+class UploadProgress {
+  final double progress; // 0.0 to 1.0
+  final UploadStatus status;
+  final String? message;
+  final String? error;
+  
+  const UploadProgress({
+    required this.progress,
+    required this.status,
+    this.message,
+    this.error,
+  });
+  
+  /// Get progress percentage (0-100)
+  int get progressPercentage => (progress * 100).round();
+  
+  @override
+  String toString() {
+    return 'UploadProgress(progress: ${progressPercentage}%, status: $status, message: $message)';
+  }
+}
+
+/// Upload status enumeration
+enum UploadStatus {
+  idle,
+  preparing,
+  uploading,
+  processing,
+  completed,
+  failed,
+  cancelled,
+}
+
+/// File upload error types
+enum FileUploadErrorType {
+  fileTooLarge,
+  unsupportedFileType,
+  networkError,
+  httpError,
+  serverError,
+  invalidResponse,
+  responseParsingError,
+  maxRetriesExceeded,
+  cancelled,
+  unknown,
+}
+
+/// Custom exception for file upload operations
+class FileUploadException implements Exception {
+  final String message;
+  final FileUploadErrorType type;
+  
+  const FileUploadException(this.message, this.type);
+  
+  @override
+  String toString() => 'FileUploadException: $message';
+  
+  /// Get user-friendly error message
+  String get userMessage {
+    switch (type) {
+      case FileUploadErrorType.fileTooLarge:
+        return 'File is too large. Maximum size is ${FileUploadService._formatBytes(AppConstants.maxFileSize)}.';
+      case FileUploadErrorType.unsupportedFileType:
+        return 'File type is not supported. Please choose an image, video, or audio file.';
+      case FileUploadErrorType.networkError:
+        return 'Network error. Please check your internet connection and try again.';
+      case FileUploadErrorType.httpError:
+      case FileUploadErrorType.serverError:
+        return 'Server error. Please try again later.';
+      case FileUploadErrorType.invalidResponse:
+      case FileUploadErrorType.responseParsingError:
+        return 'Invalid server response. Please try again.';
+      case FileUploadErrorType.maxRetriesExceeded:
+        return 'Upload failed after multiple attempts. Please try again.';
+      case FileUploadErrorType.cancelled:
+        return 'Upload was cancelled.';
+      case FileUploadErrorType.unknown:
+        return 'An unexpected error occurred. Please try again.';
+    }
+  }
+}
+

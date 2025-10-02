@@ -430,11 +430,13 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
             .handleSuccessfulLogin(loginResponse.user);
         
         // Navigate to chat screen on successful login
-        Navigator.pushNamedAndRemoveUntil(
-          context,
-          AppConstants.chatListRoute,
-          (route) => false,
-        );
+        if (mounted) {
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            AppConstants.chatListRoute,
+            (route) => false,
+          );
+        }
         
         _showSuccess('Welcome back, ${loginResponse.user.username}!');
       }

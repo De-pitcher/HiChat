@@ -176,13 +176,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       availability: 'online',
     );
 
-    // Log profile update attempt
-    print('=== PROFILE UPDATE ATTEMPT ===');
-    print('User Token: ${_userToken?.substring(0, 20)}...');
-    print('Username: $nickname');
-    print('Name: $name');
-    print('Has Profile Image: ${base64Image != null}');
-    print('==============================');
+    // Log profile update attempt (debugging)
+    debugPrint('Profile update attempt - Username: $nickname, Name: $name, Has Image: ${base64Image != null}');
 
     // Make API call to update user profile
     final updatedUser = await _apiService.updateUserProfile(_userToken!, profileUpdateRequest);
@@ -218,14 +213,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       profileImage: base64Image,
     );
 
-    // Log signup attempt
-    print('=== INITIAL SIGNUP ATTEMPT ===');
-    print('Phone Number: $_phoneNumber');
-    print('Email: $_email');
-    print('Username: $nickname');
-    print('Name: $name');
-    print('Has Profile Image: ${base64Image != null}');
-    print('==============================');
+    // Log signup attempt (debugging)  
+    debugPrint('Initial signup attempt - Phone: $_phoneNumber, Username: $nickname, Name: $name');
 
     // Make API call to create user
     final signupResponse = await _apiService.signupUser(signupRequest);
@@ -359,7 +348,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           textAlign: TextAlign.center,
           style: GoogleFonts.poppins(
             fontSize: 12,
-            color: theme.colorScheme.onSurface.withOpacity(0.6),
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
           ),
         ),
       ],
@@ -395,7 +384,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   : Icon(
                       Icons.person,
                       size: 60,
-                      color: theme.colorScheme.onSurface.withOpacity(0.5),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                     ),
             ),
           ),
@@ -459,7 +448,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           filled: true,
           fillColor: theme.brightness == Brightness.dark 
-            ? theme.colorScheme.surface.withOpacity(0.8)
+            ? theme.colorScheme.surface.withValues(alpha: 0.8)
             : theme.colorScheme.surface,
         ),
         style: TextStyle(
@@ -506,7 +495,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           filled: true,
           fillColor: theme.brightness == Brightness.dark 
-            ? theme.colorScheme.surface.withOpacity(0.8)
+            ? theme.colorScheme.surface.withValues(alpha: 0.8)
             : theme.colorScheme.surface,
         ),
         style: TextStyle(
@@ -553,7 +542,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           filled: true,
           fillColor: theme.brightness == Brightness.dark 
-            ? theme.colorScheme.surface.withOpacity(0.8)
+            ? theme.colorScheme.surface.withValues(alpha: 0.8)
             : theme.colorScheme.surface,
         ),
         style: TextStyle(
@@ -600,7 +589,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           filled: true,
           fillColor: theme.brightness == Brightness.dark 
-            ? theme.colorScheme.surface.withOpacity(0.8)
+            ? theme.colorScheme.surface.withValues(alpha: 0.8)
             : theme.colorScheme.surface,
         ),
         style: TextStyle(
@@ -626,7 +615,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             borderRadius: BorderRadius.circular(26),
           ),
           elevation: 0,
-          disabledBackgroundColor: theme.colorScheme.primary.withOpacity(0.6),
+          disabledBackgroundColor: theme.colorScheme.primary.withValues(alpha: 0.6),
         ),
         child: _isLoading
             ? const SizedBox(

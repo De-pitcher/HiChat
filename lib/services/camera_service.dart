@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:camera_service_plugin/camera_service_plugin.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,8 +14,6 @@ import 'package:path_provider/path_provider.dart';
 /// - Integration with app's architecture
 /// - Caching and storage management
 class CameraService {
-  static const String _tag = 'CameraService';
-  
   // Storage keys for preferences
   static const String _prefKeyLastCaptureTime = 'last_capture_time';
   static const String _prefKeyCaptureCount = 'capture_count';

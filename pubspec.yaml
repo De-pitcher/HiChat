@@ -41,6 +41,9 @@ dependencies:
   # HTTP client for API calls
   http: ^1.1.0
   
+  # HTTP parser for multipart requests
+  http_parser: ^4.0.2
+  
   # Shared preferences for storing user data
   shared_preferences: ^2.2.2
   
@@ -52,6 +55,15 @@ dependencies:
   
   # Image picker for selecting profile images
   image_picker: ^1.0.4
+  
+  # Cached network images for better performance
+  cached_network_image: ^3.3.1
+  
+  # Video player for video message playback
+  video_player: ^2.8.1
+  
+  # Video thumbnail generation
+  video_thumbnail: ^0.5.3
   
   # Google Sign-In for authentication
   google_sign_in: ^6.3.0
@@ -67,6 +79,18 @@ dependencies:
       
   # Path provider for file operations
   path_provider: ^2.1.1
+  
+  # WebSocket support
+  web_socket_channel: ^2.4.0
+  
+  # Location services
+  geolocator: ^10.1.0
+  
+  # Permission handler for runtime permissions
+  permission_handler: ^11.1.0
+  
+  # Shimmer effect for loading states
+  shimmer: ^3.0.0
 
 dev_dependencies:
   flutter_test:
