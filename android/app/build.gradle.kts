@@ -30,7 +30,7 @@ android {
         applicationId = "com.rodeni.hi_chat"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 23  // Updated for Firebase Auth and Camera Service Plugin compatibility
+        minSdk = 24  // Updated for flutter_sound compatibility
         targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
