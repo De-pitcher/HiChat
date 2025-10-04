@@ -497,6 +497,8 @@ class _ImageMessageCardState extends State<ImageMessageCard> {
         return Icons.schedule;
       case MessageStatus.failed:
         return Icons.error_outline;
+      case MessageStatus.pending:
+        return Icons.pending;
     }
   }
 }

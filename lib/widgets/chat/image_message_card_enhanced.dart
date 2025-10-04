@@ -10,12 +10,14 @@ class ImageMessageCard extends StatefulWidget {
   final Message message;
   final bool isCurrentUser;
   final VoidCallback? onTap;
+  final VoidCallback? onRetry;
 
   const ImageMessageCard({
     super.key,
     required this.message,
     required this.isCurrentUser,
     this.onTap,
+    this.onRetry,
   });
 
   @override
@@ -286,10 +288,15 @@ class _ImageMessageCardState extends State<ImageMessageCard> {
                     ),
                     if (widget.isCurrentUser) ...[
                       const SizedBox(width: 4),
-                      Icon(
-                        _getStatusIcon(),
-                        size: 14,
-                        color: Colors.white,
+                      GestureDetector(
+                        onTap: widget.message.status == MessageStatus.failed && widget.onRetry != null
+                            ? _handleRetryMessage
+                            : null,
+                        child: Icon(
+                          _getStatusIcon(),
+                          size: 14,
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ],
@@ -643,9 +650,17 @@ class _ImageMessageCardState extends State<ImageMessageCard> {
     return '$hour:$minute';
   }
 
+  void _handleRetryMessage() {
+    if (widget.onRetry != null) {
+      widget.onRetry!();
+    }
+  }
+
   /// Get status icon for current user messages
   IconData _getStatusIcon() {
     switch (widget.message.status) {
+      case MessageStatus.pending:
+        return Icons.schedule;
       case MessageStatus.sent:
         return Icons.check;
       case MessageStatus.delivered:

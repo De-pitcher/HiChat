@@ -10,12 +10,14 @@ class ImageMessageCard extends StatefulWidget {
   final Message message;
   final bool isCurrentUser;
   final VoidCallback? onTap;
+  final Function(Message)? onRetry;
 
   const ImageMessageCard({
     super.key,
     required this.message,
     required this.isCurrentUser,
     this.onTap,
+    this.onRetry,
   });
 
   @override
@@ -230,11 +232,27 @@ class _ImageMessageCardState extends State<ImageMessageCard> {
                     ),
                     if (widget.isCurrentUser) ...[
                       const SizedBox(width: 4),
-                      Icon(
-                        _getStatusIcon(),
-                        size: 14,
-                        color: Colors.white,
-                      ),
+                      widget.message.status == MessageStatus.failed
+                          ? GestureDetector(
+                              onTap: () => _handleRetryMessage(),
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Icon(
+                                  _getStatusIcon(),
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            )
+                          : Icon(
+                              _getStatusIcon(),
+                              size: 14,
+                              color: Colors.white,
+                            ),
                     ],
                   ],
                 ),
@@ -484,6 +502,12 @@ class _ImageMessageCardState extends State<ImageMessageCard> {
     }
   }
 
+  /// Handle retry message for failed multimedia messages
+  void _handleRetryMessage() {
+    debugPrint('🔄 ImageMessageCard: Retry button tapped for message: ${widget.message.id}');
+    widget.onRetry?.call(widget.message);
+  }
+
   /// Get status icon for current user messages
   IconData _getStatusIcon() {
     switch (widget.message.status) {
@@ -497,6 +521,8 @@ class _ImageMessageCardState extends State<ImageMessageCard> {
         return Icons.schedule;
       case MessageStatus.failed:
         return Icons.error_outline;
+      case MessageStatus.pending:
+        return Icons.pending;
     }
   }
 }

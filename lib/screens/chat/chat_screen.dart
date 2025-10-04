@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -8,9 +9,11 @@ import '../../models/message.dart';
 import '../../constants/app_theme.dart';
 import '../../services/chat_state_manager.dart';
 import '../../services/auth_state_manager.dart';
-import '../../services/camera_service.dart';
-import '../../services/gallery_service.dart';
+import '../../services/native_camera_service.dart';
+import '../../services/audio_recording_service.dart';
+
 import '../../widgets/chat/image_message_card_enhanced.dart';
+import '../../widgets/chat/audio_message_card.dart';
 import '../../widgets/chat/date_separator.dart';
 import '../../utils/date_utils.dart' as date_utils;
 
@@ -25,10 +28,7 @@ extension StringExtension on String {
 class ChatScreen extends StatefulWidget {
   final Chat chat;
 
-  const ChatScreen({
-    super.key,
-    required this.chat,
-  });
+  const ChatScreen({super.key, required this.chat});
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -55,14 +55,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _loadMessages() async {
     final chatStateManager = context.read<ChatStateManager>();
     await chatStateManager.loadMessagesForChat(widget.chat.id);
-    
+
     // Scroll to bottom after messages load
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToBottom();
     });
   }
-
-
 
   /// Send text message
   Future<void> _sendMessage() async {
@@ -71,55 +69,67 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final authManager = context.read<AuthStateManager>();
     final chatStateManager = context.read<ChatStateManager>();
-    final currentUserId = authManager.currentUser?.id.toString() ?? 'currentUser';
-    
+    final currentUserId =
+        authManager.currentUser?.id.toString() ?? 'currentUser';
+
     _messageController.clear();
     _scrollToBottom();
 
     try {
       // Get receiver ID - for direct chats, it's the other participant
       int? receiverId;
-      if (widget.chat.type == ChatType.direct && widget.chat.participants.isNotEmpty) {
+      if (widget.chat.type == ChatType.direct &&
+          widget.chat.participants.isNotEmpty) {
         final otherParticipant = widget.chat.participants.firstWhere(
           (p) => p.id.toString() != currentUserId,
           orElse: () => widget.chat.participants.first,
         );
         receiverId = otherParticipant.id;
       }
-      
+
       await chatStateManager.sendMessage(
         chatId: widget.chat.id,
         content: content,
         type: 'text',
         receiverId: receiverId,
       );
-      
+
       _scrollToBottom();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to send message: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to send message: $e')));
       }
     }
   }
 
   /// Send multimedia message (image, video, audio)
-  Future<void> _sendMultimediaMessage(CameraResult mediaResult) async {
+  Future<void> _sendMultimediaMessage(NativeCameraResult mediaResult) async {
+    debugPrint(
+      '💬 ChatScreen: Starting to send multimedia message - ${mediaResult.type.name}, size: ${mediaResult.formattedSize}',
+    );
+
     final chatStateManager = context.read<ChatStateManager>();
     final authManager = context.read<AuthStateManager>();
-    final currentUserId = authManager.currentUser?.id.toString() ?? 'currentUser';
+    final currentUserId =
+        authManager.currentUser?.id.toString() ?? 'currentUser';
 
     try {
       // Get receiver ID
       int? receiverId;
-      if (widget.chat.type == ChatType.direct && widget.chat.participants.isNotEmpty) {
+      if (widget.chat.type == ChatType.direct &&
+          widget.chat.participants.isNotEmpty) {
         final otherParticipant = widget.chat.participants.firstWhere(
           (p) => p.id.toString() != currentUserId,
           orElse: () => widget.chat.participants.first,
         );
         receiverId = otherParticipant.id;
       }
+
+      debugPrint(
+        '💬 ChatScreen: Receiver ID: $receiverId, Chat ID: ${widget.chat.id}',
+      );
 
       // Show upload progress indicator
       ScaffoldMessenger.of(context).showSnackBar(
@@ -150,7 +160,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
       // Hide progress indicator
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      
+
       // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -167,13 +177,12 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       _scrollToBottom();
-
     } catch (e) {
       debugPrint('Failed to send multimedia message: $e');
-      
+
       // Hide progress indicator
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      
+
       // Show error message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -182,7 +191,9 @@ class _ChatScreenState extends State<ChatScreen> {
               children: [
                 const Icon(Icons.error_outline, color: Colors.white, size: 20),
                 const SizedBox(width: 8),
-                Expanded(child: Text('Failed to send ${mediaResult.type.name}: $e')),
+                Expanded(
+                  child: Text('Failed to send ${mediaResult.type.name}: $e'),
+                ),
               ],
             ),
             backgroundColor: Colors.red,
@@ -193,17 +204,31 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Handle camera capture result
+  /// Handle native camera capture - show selection dialog for image or video
   Future<void> _handleCameraResult() async {
     try {
-      // Navigate to camera screen and wait for result
-      final result = await Navigator.pushNamed(context, '/camera');
-      
-      if (result != null && result is CameraResult) {
+      debugPrint(
+        '🎯 ChatScreen: Camera button pressed, showing media selection dialog...',
+      );
+
+      // Show media selection dialog for camera capture
+      final result = await NativeCameraService.showMediaSelectionDialog(
+        context,
+        allowGallery: false, // Only camera options
+        allowImage: true,
+        allowVideo: true,
+      );
+
+      debugPrint('🎯 ChatScreen: Media selection result: $result');
+
+      if (result != null) {
+        debugPrint('🎯 ChatScreen: Sending multimedia message...');
         await _sendMultimediaMessage(result);
+      } else {
+        debugPrint('🎯 ChatScreen: No media selected or user cancelled');
       }
     } catch (e) {
-      debugPrint('Camera error: $e');
+      debugPrint('🎯 ChatScreen: Native camera error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -215,135 +240,23 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Handle gallery selection
+  /// Handle gallery selection using native camera service
   Future<void> _handleGallerySelection() async {
     try {
-      final galleryService = GalleryService();
-      
-      // Show selection dialog for image or video
-      final result = await showDialog<String>(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: const Text('Select Media Type'),
-            content: const Text('What type of media would you like to select from gallery?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, 'image'),
-                child: const Text('Image'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, 'video'),
-                child: const Text('Video'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, 'multiple'),
-                child: const Text('Multiple Images'),
-              ),
-            ],
-          );
-        },
+      // Show media selection dialog for gallery
+      final result = await NativeCameraService.showMediaSelectionDialog(
+        context,
+        allowCamera: false, // Only gallery options
+        allowGallery: true,
+        allowImage: true,
+        allowVideo: true,
       );
 
-      if (result == null) return;
-
-      CameraResult? mediaResult;
-      List<CameraResult>? multipleResults;
-
-      // Handle different selection types
-      switch (result) {
-        case 'image':
-          mediaResult = await galleryService.pickImageFromGallery();
-          break;
-        case 'video':
-          mediaResult = await galleryService.pickVideoFromGallery();
-          break;
-        case 'multiple':
-          multipleResults = await galleryService.pickMultipleImagesFromGallery(maxImages: 5);
-          break;
+      if (result != null) {
+        await _sendMultimediaMessage(result);
       }
-
-      // Send single media result
-      if (mediaResult != null) {
-        await _sendMultimediaMessage(mediaResult);
-      }
-
-      // Send multiple images
-      if (multipleResults != null && multipleResults.isNotEmpty) {
-        // Show progress for multiple uploads
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: 16),
-                Text('Uploading ${multipleResults.length} images...'),
-              ],
-            ),
-            duration: const Duration(seconds: 30),
-          ),
-        );
-
-        int successCount = 0;
-        int failureCount = 0;
-
-        // Send each image
-        for (final imageResult in multipleResults) {
-          try {
-            await _sendMultimediaMessage(imageResult);
-            successCount++;
-          } catch (e) {
-            failureCount++;
-            debugPrint('Failed to send image: $e');
-          }
-        }
-
-        // Hide progress and show result
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        
-        if (failureCount == 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                  const SizedBox(width: 8),
-                  Text('All $successCount images sent successfully'),
-                ],
-              ),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.warning, color: Colors.white, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text('$successCount sent, $failureCount failed'),
-                  ),
-                ],
-              ),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
-      }
-
     } catch (e) {
-      debugPrint('Gallery error: $e');
+      debugPrint('Gallery selection error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -374,6 +287,71 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  /// Handle retry for failed messages
+  Future<void> _handleMessageRetry(Message message) async {
+    debugPrint(
+      '🔄 ChatScreen: Retrying message - ID: ${message.id}, Type: ${message.type}',
+    );
+
+    final chatStateManager = context.read<ChatStateManager>();
+
+    try {
+      // Show loading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 16),
+              Text('Retrying ${message.type.name}...'),
+            ],
+          ),
+          duration: const Duration(seconds: 30), // Long duration for retry
+        ),
+      );
+
+      await chatStateManager.retryFailedMessage(message);
+
+      // Hide loading indicator and show success
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Text('${message.type.name.capitalize()} sent successfully'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      debugPrint('🔄 ChatScreen: Retry failed: $e');
+
+      // Hide loading indicator and show error
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Retry failed: $e')),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final chatStateManager = context.read<ChatStateManager>();
@@ -397,10 +375,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             onPressed: () => Navigator.pop(context),
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(
-              minWidth: 32,
-              minHeight: 32,
-            ),
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
           ),
         ),
         title: Row(
@@ -418,7 +393,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
                           return Text(
-                            widget.chat.getDisplayName(currentUserId)[0].toUpperCase(),
+                            widget.chat
+                                .getDisplayName(currentUserId)[0]
+                                .toUpperCase(),
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -428,7 +405,9 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     )
                   : Text(
-                      widget.chat.getDisplayName(currentUserId)[0].toUpperCase(),
+                      widget.chat
+                          .getDisplayName(currentUserId)[0]
+                          .toUpperCase(),
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -452,16 +431,16 @@ class _ChatScreenState extends State<ChatScreen> {
                   if (widget.chat.isDirectChat) ...[
                     Text(
                       'Online', // TODO: Get actual online status
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.green,
-                      ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: Colors.green),
                     ),
                   ] else ...[
                     Text(
                       '${widget.chat.participantIds.length} members',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[600],
-                      ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
                     ),
                   ],
                 ],
@@ -470,6 +449,20 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
+          // Debug button for testing queue functionality
+          // IconButton(
+          //   icon: const Icon(Icons.bug_report),
+          //   onPressed: () {
+          //     final chatStateManager = context.read<ChatStateManager>();
+          //     chatStateManager.debugTestMessageQueue();
+          //     ScaffoldMessenger.of(context).showSnackBar(
+          //       const SnackBar(
+          //         content: Text('🧪 Testing queue functionality - check logs'),
+          //         duration: Duration(seconds: 2),
+          //       ),
+          //     );
+          //   },
+          // ),
           IconButton(
             icon: const Icon(Icons.call),
             onPressed: () {
@@ -497,18 +490,12 @@ class _ChatScreenState extends State<ChatScreen> {
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'info',
-                child: Text('Chat info'),
-              ),
+              const PopupMenuItem(value: 'info', child: Text('Chat info')),
               const PopupMenuItem(
                 value: 'mute',
                 child: Text('Mute notifications'),
               ),
-              const PopupMenuItem(
-                value: 'clear',
-                child: Text('Clear chat'),
-              ),
+              const PopupMenuItem(value: 'clear', child: Text('Clear chat')),
             ],
           ),
         ],
@@ -530,17 +517,17 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: Consumer<ChatStateManager>(
                 builder: (context, chatStateManager, child) {
-                  final messages = chatStateManager.getMessagesForChat(widget.chat.id);
+                  final messages = chatStateManager.getMessagesForChat(
+                    widget.chat.id,
+                  );
                   final isLoading = chatStateManager.isLoading;
-                  
+
                   if (isLoading && messages.isEmpty) {
                     return const Center(
-                      child: CircularProgressIndicator(
-                        strokeWidth: 3,
-                      ),
+                      child: CircularProgressIndicator(strokeWidth: 3),
                     );
                   }
-                  
+
                   if (messages.isEmpty) {
                     return Center(
                       child: Column(
@@ -590,29 +577,31 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     );
                   }
-                  
+
                   // Auto-scroll to bottom when messages are loaded
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (messages.isNotEmpty) {
                       _scrollToBottom();
                     }
                   });
-                  
+
                   // Group messages by date and insert date separators
-                  final groupedItems = date_utils.DateUtils.groupMessagesByDate(messages);
-                  
+                  final groupedItems = date_utils.DateUtils.groupMessagesByDate(
+                    messages,
+                  );
+
                   return ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.only(top: 16, bottom: 8),
                     itemCount: groupedItems.length,
                     itemBuilder: (context, index) {
                       final item = groupedItems[index];
-                      
+
                       // Check if this is a date separator
                       if (item is date_utils.DateSeparatorItem) {
                         return DateSeparator(date: item.date);
                       }
-                      
+
                       // Otherwise it's a message
                       final message = item as Message;
                       final isCurrentUser = message.senderId == currentUserId;
@@ -621,6 +610,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         message: message,
                         isCurrentUser: isCurrentUser,
                         chat: widget.chat,
+                        onRetry: _handleMessageRetry,
                       );
                     },
                   );
@@ -630,6 +620,7 @@ class _ChatScreenState extends State<ChatScreen> {
             _MessageInput(
               controller: _messageController,
               onSend: _sendMessage,
+              chat: widget.chat,
               onCameraPressed: _handleCameraResult,
               onGalleryPressed: _handleGallerySelection,
             ),
@@ -656,7 +647,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _editMessage(Message message) {
     // Pre-fill the message input with current content for editing
     _messageController.text = message.content;
-    
+
     // TODO: Implement edit mode with different send behavior
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -672,18 +663,21 @@ class _MessageBubble extends StatefulWidget {
   final Message message;
   final bool isCurrentUser;
   final Chat chat;
+  final Function(Message)? onRetry;
 
   const _MessageBubble({
     required this.message,
     required this.isCurrentUser,
     required this.chat,
+    this.onRetry,
   });
 
   @override
   State<_MessageBubble> createState() => _MessageBubbleState();
 }
 
-class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProviderStateMixin {
+class _MessageBubbleState extends State<_MessageBubble>
+    with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _slideAnimation;
   late Animation<double> _fadeAnimation;
@@ -695,23 +689,22 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-    
-    _slideAnimation = Tween<double>(
-      begin: widget.isCurrentUser ? 30.0 : -30.0,
-      end: 0.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOutCubic,
-    ));
-    
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOut,
-    ));
-    
+
+    _slideAnimation =
+        Tween<double>(
+          begin: widget.isCurrentUser ? 30.0 : -30.0,
+          end: 0.0,
+        ).animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+    );
+
     _animationController.forward();
   }
 
@@ -728,9 +721,23 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
       return ImageMessageCard(
         message: widget.message,
         isCurrentUser: widget.isCurrentUser,
+        onRetry: widget.onRetry != null
+            ? () => widget.onRetry!(widget.message)
+            : null,
       );
     }
-    
+
+    // For audio messages, return standalone audio card
+    if (widget.message.isAudio) {
+      return AudioMessageCard(
+        message: widget.message,
+        isCurrentUser: widget.isCurrentUser,
+        onRetry: widget.onRetry != null
+            ? () => widget.onRetry!(widget.message)
+            : null,
+      );
+    }
+
     // For text and other message types, use the regular content
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -747,7 +754,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
           ),
           const SizedBox(height: 4),
         ],
-        
+
         // Message content
         if (widget.message.isText) ...[
           Text(
@@ -760,43 +767,12 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
               letterSpacing: 0.1,
             ),
           ),
-
-        ] else if (widget.message.isAudio) ...[
-          // Audio message placeholder
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: widget.isCurrentUser 
-                  ? Colors.white.withValues(alpha: 0.1)
-                  : Colors.grey.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.mic,
-                  color: widget.isCurrentUser ? Colors.white : Colors.grey[600],
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Audio message',
-                    style: TextStyle(
-                      color: widget.isCurrentUser ? Colors.white : Colors.black87,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ] else if (widget.message.isFile) ...[
           // File message placeholder
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: widget.isCurrentUser 
+              color: widget.isCurrentUser
                   ? Colors.white.withValues(alpha: 0.1)
                   : Colors.grey.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
@@ -813,7 +789,9 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                   child: Text(
                     widget.message.content,
                     style: TextStyle(
-                      color: widget.isCurrentUser ? Colors.white : Colors.black87,
+                      color: widget.isCurrentUser
+                          ? Colors.white
+                          : Colors.black87,
                       fontSize: 14,
                     ),
                   ),
@@ -822,7 +800,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
             ),
           ),
         ],
-        
+
         // Timestamp and status (only for non-media messages)
         if (!widget.message.isImage && !widget.message.isVideo) ...[
           const SizedBox(height: 6),
@@ -833,7 +811,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                 _formatTime(widget.message.timestamp),
                 style: TextStyle(
                   fontSize: 12,
-                  color: widget.isCurrentUser 
+                  color: widget.isCurrentUser
                       ? Colors.white.withValues(alpha: 0.8)
                       : Colors.grey[600],
                   fontWeight: FontWeight.w400,
@@ -843,17 +821,35 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                 const SizedBox(width: 6),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
-                  child: Icon(
-                    _getStatusIcon(),
-                    key: ValueKey(widget.message.status),
-                    size: 16,
-                    color: _getStatusColor(),
-                  ),
+                  child: widget.message.status == MessageStatus.failed
+                      ? GestureDetector(
+                          onTap: () => _handleRetryMessage(),
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              _getStatusIcon(),
+                              key: ValueKey(widget.message.status),
+                              size: 16,
+                              color: _getStatusColor(),
+                            ),
+                          ),
+                        )
+                      : Icon(
+                          _getStatusIcon(),
+                          key: ValueKey(widget.message.status),
+                          size: 16,
+                          color: _getStatusColor(),
+                        ),
                 ),
               ],
             ],
           ),
         ],
+      
       ],
     );
   }
@@ -868,14 +864,10 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
           child: Opacity(
             opacity: _fadeAnimation.value,
             child: Container(
-              margin: EdgeInsets.only(
-                bottom: 8,
-                left: widget.isCurrentUser ? 64 : 16,
-                right: widget.isCurrentUser ? 16 : 64,
-              ),
+              margin: EdgeInsets.only(bottom: 8, left: 16, right: 16),
               child: Row(
-                mainAxisAlignment: widget.isCurrentUser 
-                    ? MainAxisAlignment.end 
+                mainAxisAlignment: widget.isCurrentUser
+                    ? MainAxisAlignment.end
                     : MainAxisAlignment.start,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -884,7 +876,9 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                       margin: const EdgeInsets.only(right: 8, bottom: 4),
                       child: CircleAvatar(
                         radius: 16,
-                        backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                        backgroundColor: AppColors.primary.withValues(
+                          alpha: 0.1,
+                        ),
                         child: Text(
                           _getSenderName()[0].toUpperCase(),
                           style: TextStyle(
@@ -896,14 +890,18 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                       ),
                     ),
                   ],
-                  
+
                   Flexible(
+                    fit: FlexFit.loose,
                     child: Material(
                       color: Colors.transparent,
                       child: InkWell(
                         onLongPress: () => _showMessageOptions(context),
-                        borderRadius: BorderRadius.circular(20),
-                        child: (widget.message.isImage || widget.message.isVideo)
+                        // borderRadius: BorderRadius.circular(20),
+                        child:
+                            (widget.message.isImage ||
+                                widget.message.isVideo ||
+                                widget.message.isAudio)
                             ? _buildMessageContent()
                             : Container(
                                 padding: const EdgeInsets.symmetric(
@@ -915,26 +913,36 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                                       ? LinearGradient(
                                           colors: [
                                             AppColors.primary,
-                                            AppColors.primary.withValues(alpha: 0.8),
+                                            AppColors.primary.withValues(
+                                              alpha: 0.8,
+                                            ),
                                           ],
                                           begin: Alignment.topLeft,
                                           end: Alignment.bottomRight,
                                         )
                                       : null,
-                                  color: widget.isCurrentUser 
-                                      ? null 
+                                  color: widget.isCurrentUser
+                                      ? null
                                       : Colors.grey[100],
                                   borderRadius: BorderRadius.only(
                                     topLeft: const Radius.circular(20),
                                     topRight: const Radius.circular(20),
-                                    bottomLeft: Radius.circular(widget.isCurrentUser ? 20 : 4),
-                                    bottomRight: Radius.circular(widget.isCurrentUser ? 4 : 20),
+                                    bottomLeft: Radius.circular(
+                                      widget.isCurrentUser ? 20 : 4,
+                                    ),
+                                    bottomRight: Radius.circular(
+                                      widget.isCurrentUser ? 4 : 20,
+                                    ),
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: widget.isCurrentUser 
-                                          ? AppColors.primary.withValues(alpha: 0.2)
-                                          : Colors.black.withValues(alpha: 0.05),
+                                      color: widget.isCurrentUser
+                                          ? AppColors.primary.withValues(
+                                              alpha: 0.2,
+                                            )
+                                          : Colors.black.withValues(
+                                              alpha: 0.05,
+                                            ),
                                       blurRadius: 8,
                                       offset: const Offset(0, 2),
                                     ),
@@ -945,6 +953,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                       ),
                     ),
                   ),
+                
                 ],
               ),
             ),
@@ -956,7 +965,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
 
   void _showMessageOptions(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -987,13 +996,10 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
               ),
             ),
             const SizedBox(height: 24),
-            
+
             // Copy action
             ListTile(
-              leading: Icon(
-                Icons.copy,
-                color: theme.iconTheme.color,
-              ),
+              leading: Icon(Icons.copy, color: theme.iconTheme.color),
               title: Text(
                 'Copy',
                 style: TextStyle(color: theme.textTheme.bodyLarge?.color),
@@ -1003,13 +1009,10 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                 _copyMessage();
               },
             ),
-            
-            // Reply action  
+
+            // Reply action
             ListTile(
-              leading: Icon(
-                Icons.reply,
-                color: theme.iconTheme.color,
-              ),
+              leading: Icon(Icons.reply, color: theme.iconTheme.color),
               title: Text(
                 'Reply',
                 style: TextStyle(color: theme.textTheme.bodyLarge?.color),
@@ -1019,13 +1022,10 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                 _replyToMessage();
               },
             ),
-            
+
             // Forward action
             ListTile(
-              leading: Icon(
-                Icons.forward,
-                color: theme.iconTheme.color,
-              ),
+              leading: Icon(Icons.forward, color: theme.iconTheme.color),
               title: Text(
                 'Forward',
                 style: TextStyle(color: theme.textTheme.bodyLarge?.color),
@@ -1035,14 +1035,11 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                 _forwardMessage();
               },
             ),
-            
+
             // Show edit and delete only for current user's messages
             if (widget.isCurrentUser) ...[
               ListTile(
-                leading: Icon(
-                  Icons.edit,
-                  color: theme.iconTheme.color,
-                ),
+                leading: Icon(Icons.edit, color: theme.iconTheme.color),
                 title: Text(
                   'Edit',
                   style: TextStyle(color: theme.textTheme.bodyLarge?.color),
@@ -1053,10 +1050,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                 },
               ),
               ListTile(
-                leading: const Icon(
-                  Icons.delete,
-                  color: Colors.red,
-                ),
+                leading: const Icon(Icons.delete, color: Colors.red),
                 title: const Text(
                   'Delete',
                   style: TextStyle(color: Colors.red),
@@ -1086,6 +1080,8 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
 
   IconData _getStatusIcon() {
     switch (widget.message.status) {
+      case MessageStatus.pending:
+        return Icons.schedule;
       case MessageStatus.sending:
         return Icons.schedule;
       case MessageStatus.sent:
@@ -1101,6 +1097,8 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
 
   Color _getStatusColor() {
     switch (widget.message.status) {
+      case MessageStatus.pending:
+        return Colors.white.withValues(alpha: 0.7);
       case MessageStatus.sending:
         return Colors.white.withValues(alpha: 0.7);
       case MessageStatus.sent:
@@ -1113,7 +1111,35 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
         return Colors.red[300]!;
     }
   }
-  
+
+  void _handleRetryMessage() {
+    debugPrint('🔄 Retry button tapped for message: ${widget.message.id}');
+
+    // Show retry confirmation
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Retry Message'),
+          content: Text('Retry sending this ${widget.message.type.name}?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                widget.onRetry?.call(widget.message);
+              },
+              child: const Text('Retry'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _copyMessage() {
     Clipboard.setData(ClipboardData(text: widget.message.content));
     if (mounted) {
@@ -1127,7 +1153,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
       );
     }
   }
-  
+
   void _replyToMessage() {
     // Find the parent ChatScreen state to handle reply
     final chatScreenState = context.findAncestorStateOfType<_ChatScreenState>();
@@ -1135,16 +1161,12 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
       chatScreenState._setReplyToMessage(widget.message);
     }
   }
-  
+
   void _forwardMessage() {
     // Navigate to contact selection for forwarding
-    Navigator.pushNamed(
-      context, 
-      '/forward-message',
-      arguments: widget.message,
-    );
+    Navigator.pushNamed(context, '/forward-message', arguments: widget.message);
   }
-  
+
   void _editMessage() {
     // Find the parent ChatScreen state to handle editing
     final chatScreenState = context.findAncestorStateOfType<_ChatScreenState>();
@@ -1152,7 +1174,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
       chatScreenState._editMessage(widget.message);
     }
   }
-  
+
   void _deleteMessage() {
     showDialog(
       context: context,
@@ -1170,22 +1192,19 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                 Navigator.pop(context);
                 _performDeleteMessage();
               },
-              child: const Text(
-                'Delete', 
-                style: TextStyle(color: Colors.red),
-              ),
+              child: const Text('Delete', style: TextStyle(color: Colors.red)),
             ),
           ],
         );
       },
     );
   }
-  
+
   void _performDeleteMessage() {
     // TODO: Implement actual delete functionality
     // final chatStateManager = context.read<ChatStateManager>();
     // chatStateManager.deleteMessage(widget.message.chatId, widget.message.id);
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1203,10 +1222,12 @@ class _MessageInput extends StatefulWidget {
   final VoidCallback onSend;
   final VoidCallback? onCameraPressed;
   final VoidCallback? onGalleryPressed;
+  final Chat chat;
 
   const _MessageInput({
     required this.controller,
     required this.onSend,
+    required this.chat,
     this.onCameraPressed,
     this.onGalleryPressed,
   });
@@ -1215,14 +1236,16 @@ class _MessageInput extends StatefulWidget {
   State<_MessageInput> createState() => _MessageInputState();
 }
 
-class _MessageInputState extends State<_MessageInput> with TickerProviderStateMixin {
+class _MessageInputState extends State<_MessageInput>
+    with TickerProviderStateMixin {
   bool _hasText = false;
   bool _isRecording = false;
   late AnimationController _animationController;
   late AnimationController _micAnimationController;
   late Animation<double> _scaleAnimation;
   late Animation<double> _micPulseAnimation;
-  
+  late final AudioRecordingService _audioRecordingService;
+
   // Recording timer state
   Duration _recordingDuration = Duration.zero;
   Timer? _recordingTimer;
@@ -1231,33 +1254,26 @@ class _MessageInputState extends State<_MessageInput> with TickerProviderStateMi
   @override
   void initState() {
     super.initState();
+    _audioRecordingService = AudioRecordingService();
     widget.controller.addListener(_onTextChanged);
-    
+
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 200),
       vsync: this,
     );
-    
+
     _micAnimationController = AnimationController(
       duration: const Duration(milliseconds: 1000),
       vsync: this,
     );
-    
-    _scaleAnimation = Tween<double>(
-      begin: 0.8,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.elasticOut,
-    ));
-    
-    _micPulseAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.2,
-    ).animate(CurvedAnimation(
-      parent: _micAnimationController,
-      curve: Curves.easeInOut,
-    ));
+
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
+    );
+
+    _micPulseAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
+      CurvedAnimation(parent: _micAnimationController, curve: Curves.easeInOut),
+    );
   }
 
   @override
@@ -1287,9 +1303,11 @@ class _MessageInputState extends State<_MessageInput> with TickerProviderStateMi
     _recordingDuration = Duration.zero;
     _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
-        _recordingDuration = Duration(seconds: _recordingDuration.inSeconds + 1);
+        _recordingDuration = Duration(
+          seconds: _recordingDuration.inSeconds + 1,
+        );
       });
-      
+
       // Auto-stop recording at max duration
       if (_recordingDuration.inSeconds >= maxRecordingSeconds) {
         _stopRecording();
@@ -1310,15 +1328,52 @@ class _MessageInputState extends State<_MessageInput> with TickerProviderStateMi
     return '$minutes:$seconds';
   }
 
+  Future<void> _sendAudioMessage(String audioFilePath) async {
+    try {
+      debugPrint('🎵 Sending audio message: $audioFilePath');
+
+      final file = File(audioFilePath);
+      if (!await file.exists()) {
+        throw Exception('Audio file not found');
+      }
+
+      final duration = _recordingDuration;
+      final chatStateManager = context.read<ChatStateManager>();
+
+      await chatStateManager.sendAudioMessage(
+        chatId: widget.chat.id,
+        audioFilePath: audioFilePath,
+        duration: duration,
+        onUploadProgress: (progress) {
+          debugPrint('🎵 Audio upload progress: ${(progress * 100).toInt()}%');
+        },
+      );
+
+      debugPrint('✅ Audio message sent successfully');
+    } catch (e) {
+      debugPrint('❌ Error sending audio message: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send audio message: $e'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   void _startRecording() async {
     // Check microphone permission
     final permission = await Permission.microphone.request();
-    
+
     if (permission != PermissionStatus.granted) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Microphone permission is required for voice messages'),
+            content: const Text(
+              'Microphone permission is required for voice messages',
+            ),
             action: SnackBarAction(
               label: 'Settings',
               onPressed: () => openAppSettings(),
@@ -1328,39 +1383,118 @@ class _MessageInputState extends State<_MessageInput> with TickerProviderStateMi
       }
       return;
     }
-    
-    // TODO: Initialize audio recording
-    
-    setState(() {
-      _isRecording = true;
-    });
-    
-    _micAnimationController.repeat(reverse: true);
-    _startRecordingTimer();
+
+    // Initialize audio recording
+    final success = await _audioRecordingService.startRecording();
+
+    if (success) {
+      setState(() {
+        _isRecording = true;
+      });
+
+      _micAnimationController.repeat(reverse: true);
+      _startRecordingTimer();
+
+      // Listen to duration stream for UI updates
+      _audioRecordingService.durationStream.listen((duration) {
+        if (mounted) {
+          setState(() {
+            _recordingDuration = duration;
+          });
+        }
+      });
+    } else {
+      debugPrint('❌ Failed to start recording');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Failed to start recording. Please check microphone permissions.',
+            ),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
-  void _stopRecording() {
-    // TODO: Stop audio recording and process audio file
-    
-    setState(() {
-      _isRecording = false;
-    });
-    
-    _micAnimationController.stop();
-    _micAnimationController.reset();
-    _stopRecordingTimer();
+  Future<void> _stopRecording() async {
+    try {
+      debugPrint('🎤 Stopping audio recording');
+      final recordingPath = await _audioRecordingService.stopRecording();
+
+      setState(() {
+        _isRecording = false;
+      });
+
+      _micAnimationController.stop();
+      _micAnimationController.reset();
+      _stopRecordingTimer();
+
+      if (recordingPath != null) {
+        debugPrint('✅ Recording completed: $recordingPath');
+        await _sendAudioMessage(recordingPath);
+      } else {
+        debugPrint('⚠️ Recording was empty or too short');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Recording was too short or failed'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error stopping recording: $e');
+      setState(() {
+        _isRecording = false;
+      });
+      _micAnimationController.stop();
+      _micAnimationController.reset();
+      _stopRecordingTimer();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error stopping recording: $e'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
-  void _cancelRecording() {
-    // TODO: Cancel recording and discard audio file
-    
-    setState(() {
-      _isRecording = false;
-    });
-    
-    _micAnimationController.stop();
-    _micAnimationController.reset();
-    _stopRecordingTimer();
+  Future<void> _cancelRecording() async {
+    try {
+      debugPrint('🎤 Cancelling audio recording');
+      await _audioRecordingService.cancelRecording();
+
+      setState(() {
+        _isRecording = false;
+      });
+
+      _micAnimationController.stop();
+      _micAnimationController.reset();
+      _stopRecordingTimer();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Recording cancelled'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error cancelling recording: $e');
+      setState(() {
+        _isRecording = false;
+      });
+      _micAnimationController.stop();
+      _micAnimationController.reset();
+      _stopRecordingTimer();
+    }
   }
 
   void _toggleRecording() {
@@ -1390,7 +1524,9 @@ class _MessageInputState extends State<_MessageInput> with TickerProviderStateMi
           ),
           child: SafeArea(
             top: false,
-            child: _isRecording ? _buildRecordingInterface() : _buildNormalInterface(),
+            child: _isRecording
+                ? _buildRecordingInterface()
+                : _buildNormalInterface(),
           ),
         ),
       ],
@@ -1401,195 +1537,208 @@ class _MessageInputState extends State<_MessageInput> with TickerProviderStateMi
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-            // Attachment button
-            Container(
-              margin: const EdgeInsets.only(right: 8, bottom: 4),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => _showAttachmentOptions(context),
-                  borderRadius: BorderRadius.circular(24),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).cardColor,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.add,
-                      size: 24,
-                      color: Theme.of(context).iconTheme.color?.withValues(alpha: 0.7),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            
-            // Text input field with integrated emoji button
-            Expanded(
+        // Attachment button
+        Container(
+          margin: const EdgeInsets.only(right: 8, bottom: 4),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _showAttachmentOptions(context),
+              borderRadius: BorderRadius.circular(24),
               child: Container(
-                constraints: const BoxConstraints(
-                  minHeight: 48,
-                  maxHeight: 120,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  shape: BoxShape.circle,
                 ),
-                child: TextField(
-                  controller: widget.controller,
-                  maxLines: null,
-                  keyboardType: TextInputType.multiline,
-                  textInputAction: TextInputAction.newline,
-                  style: TextStyle(
-                    fontSize: 16,
-                    height: 1.4,
-                    color: Theme.of(context).textTheme.bodyLarge?.color,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Type a message...',
-                    hintStyle: TextStyle(
-                      color: Theme.of(context).hintColor,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w400,
-                    ),
-                    filled: true,
-                    fillColor: Theme.of(context).cardColor,
-                    contentPadding: const EdgeInsets.fromLTRB(20, 14, 16, 14),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(
-                        color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
-                        width: 1.5,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(
-                        color: AppColors.primary.withValues(alpha: 0.5),
-                        width: 1.5,
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide(
-                        color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
-                        width: 1.5,
-                      ),
-                    ),
-                    suffixIcon: Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      child: IconButton(
-                        icon: Icon(
-                          Icons.emoji_emotions_outlined,
-                          color: Theme.of(context).iconTheme.color?.withValues(alpha: 0.7),
-                          size: 24,
-                        ),
-                        onPressed: () {
-                          // TODO: Show emoji picker
-                        },
-                        splashRadius: 20,
-                        padding: const EdgeInsets.all(8),
-                        constraints: const BoxConstraints(
-                          minWidth: 40,
-                          minHeight: 40,
-                        ),
-                        tooltip: 'Emoji',
-                      ),
-                    ),
-                    suffixIconConstraints: const BoxConstraints(
-                      minWidth: 56,
-                      minHeight: 48,
-                    ),
-                  ),
-                  onSubmitted: (_) {
-                    if (_hasText) widget.onSend();
-                  },
+                child: Icon(
+                  Icons.add,
+                  size: 24,
+                  color: Theme.of(
+                    context,
+                  ).iconTheme.color?.withValues(alpha: 0.7),
                 ),
               ),
             ),
-            
-            const SizedBox(width: 8),
-            
-            // Send or Voice button
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              transitionBuilder: (child, animation) {
-                return ScaleTransition(scale: animation, child: child);
+          ),
+        ),
+
+        // Text input field with integrated emoji button
+        Expanded(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 48, maxHeight: 120),
+            child: TextField(
+              controller: widget.controller,
+              maxLines: null,
+              keyboardType: TextInputType.multiline,
+              textInputAction: TextInputAction.newline,
+              style: TextStyle(
+                fontSize: 16,
+                height: 1.4,
+                color: Theme.of(context).textTheme.bodyLarge?.color,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Type a message...',
+                hintStyle: TextStyle(
+                  color: Theme.of(context).hintColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w400,
+                ),
+                filled: true,
+                fillColor: Theme.of(context).cardColor,
+                contentPadding: const EdgeInsets.fromLTRB(20, 14, 16, 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide(
+                    color: Theme.of(
+                      context,
+                    ).dividerColor.withValues(alpha: 0.3),
+                    width: 1.5,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide(
+                    color: AppColors.primary.withValues(alpha: 0.5),
+                    width: 1.5,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide(
+                    color: Theme.of(
+                      context,
+                    ).dividerColor.withValues(alpha: 0.3),
+                    width: 1.5,
+                  ),
+                ),
+                suffixIcon: Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  child: IconButton(
+                    icon: Icon(
+                      Icons.emoji_emotions_outlined,
+                      color: Theme.of(
+                        context,
+                      ).iconTheme.color?.withValues(alpha: 0.7),
+                      size: 24,
+                    ),
+                    onPressed: () {
+                      // TODO: Show emoji picker
+                    },
+                    splashRadius: 20,
+                    padding: const EdgeInsets.all(8),
+                    constraints: const BoxConstraints(
+                      minWidth: 40,
+                      minHeight: 40,
+                    ),
+                    tooltip: 'Emoji',
+                  ),
+                ),
+                suffixIconConstraints: const BoxConstraints(
+                  minWidth: 56,
+                  minHeight: 48,
+                ),
+              ),
+              onSubmitted: (_) {
+                if (_hasText) widget.onSend();
               },
-              child: _hasText
-                  ? ScaleTransition(
-                      scale: _scaleAnimation,
+            ),
+          ),
+        ),
+
+        const SizedBox(width: 8),
+
+        // Send or Voice button
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          transitionBuilder: (child, animation) {
+            return ScaleTransition(scale: animation, child: child);
+          },
+          child: _hasText
+              ? ScaleTransition(
+                  scale: _scaleAnimation,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: widget.onSend,
+                      borderRadius: BorderRadius.circular(24),
+                      child: Container(
+                        key: const ValueKey('send'),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              AppColors.primary,
+                              AppColors.primary.withValues(alpha: 0.8),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primary.withValues(alpha: 0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.send_rounded,
+                          size: 24,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              : AnimatedBuilder(
+                  animation: _micPulseAnimation,
+                  builder: (context, child) {
+                    return Transform.scale(
+                      scale: _isRecording ? _micPulseAnimation.value : 1.0,
                       child: Material(
                         color: Colors.transparent,
                         child: InkWell(
-                          onTap: widget.onSend,
+                          onTap: _toggleRecording,
                           borderRadius: BorderRadius.circular(24),
                           child: Container(
-                            key: const ValueKey('send'),
+                            key: const ValueKey('mic'),
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  AppColors.primary,
-                                  AppColors.primary.withValues(alpha: 0.8),
-                                ],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
+                              color: _isRecording
+                                  ? Colors.red
+                                  : Theme.of(context).cardColor,
                               shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primary.withValues(alpha: 0.3),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
+                              boxShadow: _isRecording
+                                  ? [
+                                      BoxShadow(
+                                        color: Colors.red.withValues(
+                                          alpha: 0.3,
+                                        ),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ]
+                                  : null,
                             ),
-                            child: const Icon(
-                              Icons.send_rounded,
+                            child: Icon(
+                              _isRecording ? Icons.stop : Icons.mic,
                               size: 24,
-                              color: Colors.white,
+                              color: _isRecording
+                                  ? Colors.white
+                                  : Theme.of(
+                                      context,
+                                    ).iconTheme.color?.withValues(alpha: 0.7),
                             ),
                           ),
                         ),
                       ),
-                    )
-                  : AnimatedBuilder(
-                      animation: _micPulseAnimation,
-                      builder: (context, child) {
-                        return Transform.scale(
-                          scale: _isRecording ? _micPulseAnimation.value : 1.0,
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: _toggleRecording,
-                              borderRadius: BorderRadius.circular(24),
-                              child: Container(
-                                key: const ValueKey('mic'),
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: _isRecording ? Colors.red : Theme.of(context).cardColor,
-                                  shape: BoxShape.circle,
-                                  boxShadow: _isRecording
-                                      ? [
-                                          BoxShadow(
-                                            color: Colors.red.withValues(alpha: 0.3),
-                                            blurRadius: 12,
-                                            offset: const Offset(0, 2),
-                                          ),
-                                        ]
-                                      : null,
-                                ),
-                                child: Icon(
-                                  _isRecording ? Icons.stop : Icons.mic,
-                                  size: 24,
-                                  color: _isRecording ? Colors.white : Theme.of(context).iconTheme.color?.withValues(alpha: 0.7),
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 
@@ -1635,7 +1784,7 @@ class _MessageInputState extends State<_MessageInput> with TickerProviderStateMi
                 ),
               ),
               const SizedBox(width: 12),
-              
+
               // Recording time
               Text(
                 _formatDuration(_recordingDuration),
@@ -1645,9 +1794,9 @@ class _MessageInputState extends State<_MessageInput> with TickerProviderStateMi
                   color: Colors.red,
                 ),
               ),
-              
+
               const Spacer(),
-              
+
               // Max duration indicator
               Text(
                 'Max ${_formatDuration(Duration(seconds: maxRecordingSeconds))}',
@@ -1660,7 +1809,7 @@ class _MessageInputState extends State<_MessageInput> with TickerProviderStateMi
             ],
           ),
         ),
-        
+
         // Recording controls
         Row(
           children: [
@@ -1676,19 +1825,12 @@ class _MessageInputState extends State<_MessageInput> with TickerProviderStateMi
                     decoration: BoxDecoration(
                       color: Colors.grey[100],
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: Colors.grey[300]!,
-                        width: 1,
-                      ),
+                      border: Border.all(color: Colors.grey[300]!, width: 1),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.close,
-                          size: 20,
-                          color: Colors.grey[700],
-                        ),
+                        Icon(Icons.close, size: 20, color: Colors.grey[700]),
                         const SizedBox(width: 8),
                         Text(
                           'Cancel',
@@ -1704,9 +1846,9 @@ class _MessageInputState extends State<_MessageInput> with TickerProviderStateMi
                 ),
               ),
             ),
-            
+
             const SizedBox(width: 12),
-            
+
             // Stop and send button
             Expanded(
               child: Material(
@@ -1737,11 +1879,7 @@ class _MessageInputState extends State<_MessageInput> with TickerProviderStateMi
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.send,
-                          size: 20,
-                          color: Colors.white,
-                        ),
+                        Icon(Icons.send, size: 20, color: Colors.white),
                         SizedBox(width: 8),
                         Text(
                           'Send',
@@ -1765,7 +1903,7 @@ class _MessageInputState extends State<_MessageInput> with TickerProviderStateMi
 
   void _showAttachmentOptions(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1873,11 +2011,7 @@ class _AttachmentOption extends StatelessWidget {
                 color: color.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                icon,
-                size: 28,
-                color: color,
-              ),
+              child: Icon(icon, size: 28, color: color),
             ),
           ),
         ),
