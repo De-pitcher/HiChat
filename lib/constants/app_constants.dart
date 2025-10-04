@@ -35,7 +35,7 @@ class AppConstants {
   static const Duration typingIndicatorTimeout = Duration(seconds: 3);
   
   // File Upload Constants
-  static const int maxFileSize = 10 * 1024 * 1024; // 10MB
+  static const int maxFileSize = 100 * 1024 * 1024; // 100MB
   static const List<String> allowedImageTypes = ['jpg', 'jpeg', 'png', 'gif'];
   static const List<String> allowedVideoTypes = ['mp4', 'mov', 'avi'];
   static const List<String> allowedAudioTypes = ['mp3', 'wav', 'aac'];

@@ -56,6 +56,9 @@ dependencies:
   # Image picker for selecting profile images
   image_picker: ^1.0.4
   
+  # Path utilities for file operations
+  path: ^1.8.3
+  
   # Cached network images for better performance
   cached_network_image: ^3.3.1
   
@@ -91,6 +94,12 @@ dependencies:
   
   # Shimmer effect for loading states
   shimmer: ^3.0.0
+  
+  # File size calculation
+  filesize: ^2.0.1
+  
+  # Audio recording and playback (mobile platforms only)
+  flutter_sound: ^9.2.13
 
 dev_dependencies:
   flutter_test:
@@ -156,6 +165,8 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+
 
 # Configuration for flutter_launcher_icons
 flutter_icons:

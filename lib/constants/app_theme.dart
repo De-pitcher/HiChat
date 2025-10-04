@@ -35,6 +35,14 @@ class AppColors {
 }
 
 class AppTheme {
+  // Static getters for commonly used colors
+  static Color get primaryBlue => AppColors.primary;
+  static Color get cardBackground => AppColors.surface;
+  static Color get borderColor => AppColors.divider;
+  static Color get textSecondary => AppColors.textSecondary;
+  static Color get textColor => AppColors.textPrimary;
+  static Color get chatBubbleBackground => AppColors.messageBubbleOther;
+
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
