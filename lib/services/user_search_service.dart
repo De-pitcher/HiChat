@@ -231,7 +231,7 @@ class UserSearchService {
           name: 'UserSearchService',
           error: {
             'responseBody': response.body,
-            'authToken': authToken.substring(0, 10) + '...',
+            'authToken': '${authToken.substring(0, 10)}...',
           },
           level: 900,
         );

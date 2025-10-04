@@ -186,7 +186,7 @@ class LocalMediaCacheService {
         metadata.thumbnailPath = thumbnailPath;
         metadata.hasThumbnail = true;
         
-        debugPrint('📱 Video thumbnail generated: ${thumbnailPath}');
+        debugPrint('📱 Video thumbnail generated: $thumbnailPath');
       } else {
         debugPrint('📱 Failed to generate thumbnail data');
         metadata.hasThumbnail = false;

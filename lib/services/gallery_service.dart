@@ -133,10 +133,10 @@ class GalleryService {
       final path = file.path;
       final extension = path.split('.').last.toLowerCase();
       
-      // Validate file size (max 50MB)
-      const maxSizeBytes = 50 * 1024 * 1024; // 50MB
+      // Validate file size (max 100MB)
+      const maxSizeBytes = 100 * 1024 * 1024; // 100MB
       if (fileSize > maxSizeBytes) {
-        throw Exception('File size too large. Maximum size is 50MB.');
+        throw Exception('File size too large. Maximum size is 100MB.');
       }
 
       // Validate file type
