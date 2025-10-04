@@ -9,6 +9,36 @@ import '../models/chat.dart';
 import '../models/message.dart';
 import '../models/user.dart';
 
+/// Represents a queued message waiting to be sent
+class QueuedMessage {
+  final String id;
+  final String chatId;
+  final Map<String, dynamic> payload;
+  final DateTime queuedAt;
+  final int retryCount;
+  final String type; // 'message', 'update', 'delete', etc.
+
+  const QueuedMessage({
+    required this.id,
+    required this.chatId,
+    required this.payload,
+    required this.queuedAt,
+    this.retryCount = 0,
+    required this.type,
+  });
+
+  QueuedMessage copyWithRetry() {
+    return QueuedMessage(
+      id: id,
+      chatId: chatId,
+      payload: payload,
+      queuedAt: queuedAt,
+      retryCount: retryCount + 1,
+      type: type,
+    );
+  }
+}
+
 /// Event listener interface for chat WebSocket events
 abstract class ChatEventListener {
   void onUserFound(User user);
@@ -55,6 +85,8 @@ class ChatWebSocketService {
   // Message queuing
   final List<String> _messageQueue = [];
   final List<Uint8List> _videoQueue = [];
+  final List<QueuedMessage> _enhancedMessageQueue = [];
+  final Map<String, QueuedMessage> _pendingMessages = {};
 
   // Event listeners
   final List<ChatEventListener> _listeners = [];
@@ -155,7 +187,10 @@ class ChatWebSocketService {
     _isConnected = true;
     _reconnectAttempts = 0;
 
-    // Send queued messages
+    // Send enhanced queued messages first (with retry logic)
+    _processEnhancedMessageQueue();
+
+    // Send legacy queued messages
     while (_messageQueue.isNotEmpty) {
       final queuedMsg = _messageQueue.removeAt(0);
       _webSocket?.sink.add(queuedMsg);
@@ -169,6 +204,107 @@ class ChatWebSocketService {
 
     // Notify listeners
     _notifyConnectionEstablished();
+  }
+
+  /// Process enhanced message queue with retry logic
+  void _processEnhancedMessageQueue() {
+    debugPrint('$_tag: Processing enhanced message queue - Queue size: ${_enhancedMessageQueue.length}');
+    
+    if (_enhancedMessageQueue.isEmpty) {
+      debugPrint('$_tag: No messages in enhanced queue to process');
+      return;
+    }
+    
+    final List<QueuedMessage> failedMessages = [];
+    int processedCount = 0;
+    
+    while (_enhancedMessageQueue.isNotEmpty) {
+      final queuedMessage = _enhancedMessageQueue.removeAt(0);
+      processedCount++;
+      
+      debugPrint('$_tag: Processing queued message $processedCount/${processedCount + _enhancedMessageQueue.length} - ID: ${queuedMessage.id}, Type: ${queuedMessage.type}');
+      
+      try {
+        // Send the queued message
+        final jsonMessage = jsonEncode(queuedMessage.payload);
+        debugPrint('$_tag: Sending queued message: $jsonMessage');
+        _webSocket?.sink.add(jsonMessage);
+        
+        // Remove from pending messages since it's sent
+        _pendingMessages.remove(queuedMessage.id);
+        
+        // Update message status to 'sending'
+        _notifyMessageSentFromQueue(queuedMessage);
+        
+        debugPrint('$_tag: Successfully sent queued message ${queuedMessage.id} (${queuedMessage.type})');
+        
+        // Small delay between messages to avoid overwhelming the server
+        if (_enhancedMessageQueue.isNotEmpty) {
+          Future.delayed(const Duration(milliseconds: 100));
+        }
+        
+      } catch (e) {
+        debugPrint('$_tag: Failed to send queued message ${queuedMessage.id}: $e');
+        
+        // Retry logic - only retry up to 3 times
+        if (queuedMessage.retryCount < 3) {
+          debugPrint('$_tag: Adding message ${queuedMessage.id} for retry (attempt ${queuedMessage.retryCount + 1}/3)');
+          failedMessages.add(queuedMessage.copyWithRetry());
+        } else {
+          debugPrint('$_tag: Message ${queuedMessage.id} exceeded max retries, marking as permanently failed');
+          // Max retries reached, mark as permanently failed
+          _notifyMessagePermanentlyFailed(queuedMessage);
+        }
+      }
+    }
+    
+    // Re-add failed messages that can be retried
+    if (failedMessages.isNotEmpty) {
+      debugPrint('$_tag: Re-adding ${failedMessages.length} failed messages for retry');
+      _enhancedMessageQueue.addAll(failedMessages);
+    }
+    
+    debugPrint('$_tag: Queue processing complete - Processed: $processedCount, Failed for retry: ${failedMessages.length}, Remaining: ${_enhancedMessageQueue.length}');
+  }
+
+  /// Notify listeners that a queued message was sent successfully
+  void _notifyMessageSentFromQueue(QueuedMessage queuedMessage) {
+    final sentMessage = Message(
+      id: queuedMessage.id,
+      chatId: queuedMessage.chatId,
+      senderId: _lastUserId?.toString() ?? 'unknown',
+      content: queuedMessage.payload['content']?.toString() ?? '',
+      timestamp: queuedMessage.queuedAt,
+      status: MessageStatus.sending, // Will be updated to 'sent' when server confirms
+      type: _parseMessageType(queuedMessage.payload['message_type']?.toString() ?? 'text'),
+      metadata: {
+        'was_queued': true,
+        'sent_from_queue_at': DateTime.now().toIso8601String(),
+      },
+    );
+    
+    _notifyMessageStatusUpdated(sentMessage);
+  }
+
+  /// Notify listeners that a queued message permanently failed
+  void _notifyMessagePermanentlyFailed(QueuedMessage queuedMessage) {
+    final failedMessage = Message(
+      id: queuedMessage.id,
+      chatId: queuedMessage.chatId,
+      senderId: _lastUserId?.toString() ?? 'unknown',
+      content: queuedMessage.payload['content']?.toString() ?? '',
+      timestamp: queuedMessage.queuedAt,
+      status: MessageStatus.failed,
+      type: _parseMessageType(queuedMessage.payload['message_type']?.toString() ?? 'text'),
+      metadata: {
+        'permanently_failed': true,
+        'retry_count': queuedMessage.retryCount,
+        'failure_reason': 'max_retries_exceeded',
+      },
+    );
+    
+    _notifyMessageStatusUpdated(failedMessage);
+    _pendingMessages.remove(queuedMessage.id);
   }
 
   /// Handle incoming WebSocket messages
@@ -317,17 +453,84 @@ class ChatWebSocketService {
     _pingTimer = null;
   }
 
-  /// Send JSON message through WebSocket
-  void _sendJson(Map<String, dynamic> json) {
+  /// Send JSON message through WebSocket with enhanced queuing
+  void _sendJson(Map<String, dynamic> json, {String? messageId, String? chatId}) {
+    debugPrint('$_tag: _sendJson called - Connected: $_isConnected, WebSocket: ${_webSocket != null}, MessageID: $messageId, ChatID: $chatId');
+    
     if (_isConnected && _webSocket != null) {
       final message = jsonEncode(json);
-      debugPrint('$_tag: Sending: $message');
+      debugPrint('$_tag: Sending immediately: $message');
       _webSocket!.sink.add(message);
+      
+      // If this was a queued message, remove it from pending
+      if (messageId != null) {
+        _pendingMessages.remove(messageId);
+        debugPrint('$_tag: Removed message $messageId from pending queue');
+      }
     } else {
-      debugPrint('$_tag: WebSocket disconnected, queuing message');
-      _messageQueue.add(jsonEncode(json));
+      debugPrint('$_tag: WebSocket disconnected (Connected: $_isConnected, WebSocket: ${_webSocket != null}), queuing message');
+      
+      // Enhanced queuing with message tracking
+      if (messageId != null && chatId != null) {
+        debugPrint('$_tag: Adding message to enhanced queue - ID: $messageId, Chat: $chatId, Action: ${json['action']}');
+        
+        final queuedMessage = QueuedMessage(
+          id: messageId,
+          chatId: chatId,
+          payload: json,
+          queuedAt: DateTime.now(),
+          type: json['action']?.toString() ?? 'unknown',
+        );
+        
+        _enhancedMessageQueue.add(queuedMessage);
+        _pendingMessages[messageId] = queuedMessage;
+        
+        debugPrint('$_tag: Queue sizes - Enhanced: ${_enhancedMessageQueue.length}, Pending: ${_pendingMessages.length}');
+        
+        // Notify listeners that message is queued (failed status)
+        _notifyMessageQueuedStatus(messageId, chatId);
+      } else {
+        debugPrint('$_tag: Adding to simple queue (no ID/ChatID) - Message: ${jsonEncode(json)}');
+        // Fallback to simple queue for messages without IDs
+        _messageQueue.add(jsonEncode(json));
+      }
+      
       if (_shouldReconnect && !_isConnected) {
+        debugPrint('$_tag: Scheduling reconnect due to queued message');
         _scheduleReconnect();
+      }
+    }
+  }
+
+  /// Notify listeners that a message is queued (failed status)
+  void _notifyMessageQueuedStatus(String messageId, String chatId) {
+    // Create a temporary message with failed status to update UI
+    final queuedMessage = Message(
+      id: messageId,
+      chatId: chatId,
+      senderId: _lastUserId?.toString() ?? 'unknown',
+      content: 'Message queued...',
+      timestamp: DateTime.now(),
+      status: MessageStatus.failed, // This will show the error icon
+      type: MessageType.text,
+      metadata: {
+        'queued': true,
+        'queue_reason': 'connection_lost',
+        'queued_at': DateTime.now().toIso8601String(),
+      },
+    );
+    
+    // Notify all listeners that message status has been updated
+    _notifyMessageStatusUpdated(queuedMessage);
+  }
+
+  /// Notify listeners about message status update
+  void _notifyMessageStatusUpdated(Message message) {
+    for (final listener in _listeners) {
+      try {
+        listener.onMessageUpdated(message);
+      } catch (e) {
+        debugPrint('$_tag: Error notifying listener of message update: $e');
       }
     }
   }
@@ -1022,28 +1225,38 @@ class ChatWebSocketService {
     });
   }
 
-  /// Send a message
+  /// Send a message with enhanced queuing support
   void sendMessage({
     required String chatId,
     required int receiverId,
     required String content,
     required String type,
     String? fileUrl,
+    String? messageId, // Optional message ID for tracking
   }) {
-    debugPrint('$_tag: Sending message to chat: $chatId');
+    debugPrint('$_tag: 🚀 sendMessage called - ChatID: $chatId, Type: $type, ProvidedID: $messageId, Content: ${content.length > 50 ? content.substring(0, 50) + '...' : content}');
+    
+    // Generate temporary ID if not provided
+    final tempId = messageId ?? 'temp_${DateTime.now().millisecondsSinceEpoch}_${math.Random().nextInt(1000)}';
+    debugPrint('$_tag: 🆔 Using message ID: $tempId (provided: ${messageId != null})');
+    
     final payload = {
       'action': 'send_message',
       'chat_id': chatId,
       'receiver_id': receiverId,
       'message_type': type,
       'content': content,
+      'temp_message_id': tempId, // Include temp ID for tracking
     };
     
     if (fileUrl != null) {
       payload['file_url'] = fileUrl;
+      debugPrint('$_tag: 📎 Including file URL: $fileUrl');
     }
     
-    _sendJson(payload);
+    debugPrint('$_tag: 📤 Calling _sendJson with messageId: $tempId, chatId: $chatId');
+    // Use enhanced queuing with message tracking
+    _sendJson(payload, messageId: tempId, chatId: chatId);
   }
 
   /// Update a message
@@ -1080,6 +1293,129 @@ class ChatWebSocketService {
     _sendJson({
       'action': 'mark_delivered',
       'message_ids': messageIds,
+    });
+  }
+
+  // ============================================================================
+  // UTILITY METHODS
+  // ============================================================================
+
+  /// Parse string to MessageType enum
+  MessageType _parseMessageType(String type) {
+    switch (type.toLowerCase()) {
+      case 'text':
+        return MessageType.text;
+      case 'image':
+        return MessageType.image;
+      case 'video':
+        return MessageType.video;
+      case 'audio':
+        return MessageType.audio;
+      case 'file':
+        return MessageType.file;
+      default:
+        return MessageType.text;
+    }
+  }
+
+  /// Get the number of messages currently queued
+  int get queuedMessageCount => _enhancedMessageQueue.length + _messageQueue.length;
+
+  /// Get queued messages for a specific chat
+  List<QueuedMessage> getQueuedMessagesForChat(String chatId) {
+    return _enhancedMessageQueue.where((msg) => msg.chatId == chatId).toList();
+  }
+
+  /// Check if a specific message is currently queued
+  bool isMessageQueued(String messageId) {
+    return _pendingMessages.containsKey(messageId);
+  }
+
+  /// Manually retry sending a specific queued message
+  void retryQueuedMessage(String messageId) {
+    final queuedMessage = _pendingMessages[messageId];
+    if (queuedMessage != null && _isConnected && _webSocket != null) {
+      try {
+        final jsonMessage = jsonEncode(queuedMessage.payload);
+        _webSocket!.sink.add(jsonMessage);
+        
+        // Remove from pending and queues
+        _pendingMessages.remove(messageId);
+        _enhancedMessageQueue.removeWhere((msg) => msg.id == messageId);
+        
+        // Update status
+        _notifyMessageSentFromQueue(queuedMessage);
+        
+        debugPrint('$_tag: Manually retried message $messageId');
+      } catch (e) {
+        debugPrint('$_tag: Manual retry failed for message $messageId: $e');
+      }
+    }
+  }
+
+  /// Clear all queued messages (use with caution)
+  void clearMessageQueue() {
+    _enhancedMessageQueue.clear();
+    _messageQueue.clear();
+    _pendingMessages.clear();
+    debugPrint('$_tag: Message queues cleared');
+  }
+
+  /// Test the queue functionality by simulating disconnection
+  void testQueueFunctionality() {
+    debugPrint('$_tag: 🧪 TESTING QUEUE FUNCTIONALITY');
+    
+    // Force disconnect for testing
+    final originalConnection = _isConnected;
+    _isConnected = false;
+    
+    debugPrint('$_tag: 🧪 Forced disconnection (was: $originalConnection, now: $_isConnected)');
+    
+    // Send a test message that should be queued
+    sendMessage(
+      chatId: 'test_chat',
+      receiverId: 999,
+      content: 'Test message for queue',
+      type: 'text',
+      messageId: 'test_queue_message_123',
+    );
+    
+    debugPrint('$_tag: 🧪 Test message sent, checking queue status...');
+    debugPrint('$_tag: 🧪 Enhanced queue size: ${_enhancedMessageQueue.length}');
+    debugPrint('$_tag: 🧪 Pending messages: ${_pendingMessages.length}');
+    debugPrint('$_tag: 🧪 Legacy queue size: ${_messageQueue.length}');
+    
+    // Restore connection and process queue
+    Future.delayed(const Duration(seconds: 2), () {
+      debugPrint('$_tag: 🧪 Restoring connection and processing queue...');
+      _isConnected = originalConnection;
+      _processEnhancedMessageQueue();
+    });
+  }
+
+  /// Debug method to test queue functionality - call from UI
+  void debugTestQueue() {
+    debugPrint('$_tag: 🧪 QUEUE TEST: Starting queue functionality test');
+    
+    // Force disconnect
+    final wasConnected = _isConnected;
+    _isConnected = false;
+    debugPrint('$_tag: 🧪 QUEUE TEST: Simulated disconnect - connected: $_isConnected');
+    
+    // Send test message while disconnected
+    sendMessage(
+      chatId: 'debug_test_chat',
+      receiverId: 1,
+      content: 'Test message sent while disconnected',
+      type: 'text',
+      messageId: 'debug_test_${DateTime.now().millisecondsSinceEpoch}',
+    );
+    
+    // Restore connection after delay
+    Future.delayed(const Duration(seconds: 2), () {
+      debugPrint('$_tag: 🧪 QUEUE TEST: Restoring connection');
+      _isConnected = wasConnected;
+      _processEnhancedMessageQueue();
     });
   }
 }

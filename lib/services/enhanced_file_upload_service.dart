@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart' as http_parser;
 import '../constants/app_constants.dart';
-import 'camera_service.dart' as camera;
+import 'native_camera_service.dart';
 import 'local_media_cache_service.dart';
 
 /// Enhanced service for uploading media files with local caching support
@@ -14,7 +14,7 @@ import 'local_media_cache_service.dart';
 class EnhancedFileUploadService {
   static const String _tag = 'EnhancedFileUploadService';
   static const String _uploadEndpoint = '/api/media/';
-  static const Duration _uploadTimeout = Duration(seconds: 30);
+  static const Duration _uploadTimeout = Duration(minutes: 2); // Increased to 2 minutes for large videos
   static const int _maxRetries = 3;
   
   // Base URL from app constants, fallback to production server
@@ -31,7 +31,7 @@ class EnhancedFileUploadService {
   /// 
   /// Returns [EnhancedUploadResult] with file URL, timestamp, and metadata
   static Future<EnhancedUploadResult> uploadMediaWithCaching(
-    camera.CameraResult result,
+    NativeCameraResult result,
     String chatId, {
     Function(double)? onProgress,
   }) async {
@@ -46,8 +46,8 @@ class EnhancedFileUploadService {
         );
       }
       
-      // Convert Base64 to bytes
-      final Uint8List fileBytes = base64Decode(result.data);
+      // Use the file bytes directly from NativeCameraResult
+      final Uint8List fileBytes = result.data;
       
       // Save media locally first and get timestamp
       debugPrint('🚀 Saving media locally: type=${_convertToLocalMediaType(result.type)}, size=${fileBytes.length}');
@@ -69,16 +69,18 @@ class EnhancedFileUploadService {
         onProgress(0.2); // Local save complete
       }
       
-      // Create multipart request for upload
-      final request = await _createMultipartRequest(fileBytes, _convertToLocalMediaType(result.type), timestamp);
-      
       // Set progress callback if provided
       if (onProgress != null) {
-        onProgress(0.3); // Request created
+        onProgress(0.3); // Starting upload
       }
       
-      // Send request with retry mechanism
-      final response = await _sendWithRetry(request, onProgress);
+      // Send request with retry mechanism (creates fresh request for each attempt)
+      final response = await _sendWithRetry(
+        fileBytes,
+        _convertToLocalMediaType(result.type),
+        timestamp,
+        onProgress,
+      );
       
       // Parse response
       final uploadResult = await _parseUploadResponse(response, result, timestamp);
@@ -133,7 +135,9 @@ class EnhancedFileUploadService {
   
   /// Send request with retry mechanism and progress tracking
   static Future<http.StreamedResponse> _sendWithRetry(
-    http.MultipartRequest request,
+    Uint8List fileBytes,
+    MediaType mediaType,
+    String timestamp,
     Function(double)? onProgress,
   ) async {
     int attempts = 0;
@@ -149,6 +153,8 @@ class EnhancedFileUploadService {
           onProgress(baseProgress);
         }
         
+        // Create a fresh request for each attempt
+        final request = await _createMultipartRequest(fileBytes, mediaType, timestamp);
         final response = await request.send().timeout(_uploadTimeout);
         
         if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -191,7 +197,7 @@ class EnhancedFileUploadService {
   /// Parse upload response and create result
   static Future<EnhancedUploadResult> _parseUploadResponse(
     http.StreamedResponse response,
-    camera.CameraResult originalResult,
+    NativeCameraResult originalResult,
     String timestamp,
   ) async {
     try {
@@ -240,49 +246,50 @@ class EnhancedFileUploadService {
   }
 
   /// Convert camera MediaType to local cache MediaType
-  static MediaType _convertToLocalMediaType(camera.MediaType cameraType) {
+  static MediaType _convertToLocalMediaType(NativeMediaType cameraType) {
     switch (cameraType) {
-      case camera.MediaType.image:
+      case NativeMediaType.image:
         return MediaType.image;
-      case camera.MediaType.video:
+      case NativeMediaType.video:
         return MediaType.video;
-      case camera.MediaType.audio:
+      case NativeMediaType.audio:
         return MediaType.audio;
     }
   }
 
-  /// Convert local cache MediaType to camera MediaType for helper functions
-  static camera.MediaType _convertToCameraMediaType(MediaType localType) {
+  /// Convert local cache MediaType to native camera MediaType for helper functions
+  static NativeMediaType _convertToCameraMediaType(MediaType localType) {
     switch (localType) {
       case MediaType.image:
-        return camera.MediaType.image;
+        return NativeMediaType.image;
       case MediaType.video:
-        return camera.MediaType.video;
+        return NativeMediaType.video;
       case MediaType.audio:
-        return camera.MediaType.audio;
+        // Native camera service doesn't support audio, default to video
+        return NativeMediaType.video;
     }
   }
   
   /// Helper methods for file handling
-  static String _getFileExtension(camera.MediaType mediaType) {
+  static String _getFileExtension(NativeMediaType mediaType) {
     switch (mediaType) {
-      case camera.MediaType.image:
+      case NativeMediaType.image:
         return 'jpg';
-      case camera.MediaType.video:
+      case NativeMediaType.video:
         return 'mp4';
-      case camera.MediaType.audio:
-        return 'mp3';
+      case NativeMediaType.audio:
+        return 'aac';
     }
   }
   
-  static String _getMimeType(camera.MediaType mediaType) {
+  static String _getMimeType(NativeMediaType mediaType) {
     switch (mediaType) {
-      case camera.MediaType.image:
+      case NativeMediaType.image:
         return 'image/jpeg';
-      case camera.MediaType.video:
+      case NativeMediaType.video:
         return 'video/mp4';
-      case camera.MediaType.audio:
-        return 'audio/mpeg';
+      case NativeMediaType.audio:
+        return 'audio/aac';
     }
   }
   

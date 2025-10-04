@@ -1,11 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/chat.dart';
 import '../models/message.dart';
 import '../models/user.dart';
 import 'chat_websocket_service.dart';
-import 'camera_service.dart';
+import 'native_camera_service.dart';
 import 'enhanced_file_upload_service.dart';
+import 'local_media_cache_service.dart';
 
 /// Manages the state of chats and messages with seamless WebSocket integration
 /// This service acts as a centralized state manager that syncs with the WebSocket service
@@ -113,9 +115,10 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
     int? receiverId,
     String? fileUrl,
   }) async {
-    if (!_chatWebSocketService.isConnected) {
-      throw Exception('WebSocket not connected');
-    }
+    debugPrint('🚀 ChatStateManager: sendMessage called - chatId: $chatId, content: $content, type: $type');
+    debugPrint('🚀 ChatStateManager: WebSocket connected: ${_chatWebSocketService.isConnected}');
+    
+    // Note: Removed connection check to allow queuing when disconnected
 
     try {
       // Create optimistic message with a trackable temporary ID
@@ -136,18 +139,25 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
       // Add optimistic message to local state
       _addMessageToChat(chatId, message);
 
-      // Send via WebSocket
+      // Send via WebSocket with temp ID for queue tracking
       _chatWebSocketService.sendMessage(
         chatId: chatId,
         receiverId: receiverId ?? 0,
         content: content,
         type: type,
         fileUrl: fileUrl,
+        messageId: tempId, // Pass temp ID for enhanced queuing
       );
 
-      // Update message status to sent (optimistic)
-      final updatedMessage = message.copyWith(status: MessageStatus.sent);
-      _updateMessageInChat(chatId, updatedMessage);
+      // Update message status based on connection state
+      if (_chatWebSocketService.isConnected) {
+        // Update message status to sent (optimistic)
+        final updatedMessage = message.copyWith(status: MessageStatus.sent);
+        _updateMessageInChat(chatId, updatedMessage);
+      } else {
+        // Message is queued, status will be updated by WebSocket service
+        debugPrint('ChatStateManager: Message queued due to disconnection');
+      }
       
     } catch (e) {
       debugPrint('ChatStateManager: Failed to send message: $e');
@@ -155,19 +165,153 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
     }
   }
 
-  /// Send multimedia message (image, video, audio)
-  Future<void> sendMultimediaMessage({
+  /// Send audio message
+  Future<void> sendAudioMessage({
     required String chatId,
-    required CameraResult mediaResult,
+    required String audioFilePath,
+    required Duration duration,
     int? receiverId,
     Function(double)? onUploadProgress,
   }) async {
-    if (!_chatWebSocketService.isConnected) {
-      throw Exception('WebSocket not connected');
+    debugPrint('ChatStateManager: Starting audio message send for chat: $chatId');
+    debugPrint('ChatStateManager: WebSocket connected: ${_chatWebSocketService.isConnected}');
+    
+    try {
+      // Create file from path
+      final audioFile = File(audioFilePath);
+      if (!await audioFile.exists()) {
+        throw Exception('Audio file not found: $audioFilePath');
+      }
+
+      final fileSize = await audioFile.length();
+      
+      // Create optimistic message with sending status
+      final tempId = 'audio_${_currentUserId ?? 'unknown'}_${DateTime.now().millisecondsSinceEpoch}';
+      final optimisticMessage = Message(
+        id: tempId,
+        chatId: chatId,
+        senderId: _currentUserId ?? '',
+        content: 'Sending audio...',
+        timestamp: DateTime.now(),
+        status: MessageStatus.sending,
+        type: MessageType.audio,
+        metadata: {
+          'is_uploading': true,
+          'upload_progress': 0.0,
+          'duration': duration.inMilliseconds,
+          'file_size': fileSize,
+          'local_path': audioFilePath,
+        },
+      );
+
+      // Add to messages immediately for UI feedback
+      _addMessageToChat(chatId, optimisticMessage);
+
+      // Read audio file data
+      final audioData = await audioFile.readAsBytes();
+      
+      // Create NativeCameraResult structure for audio
+      final audioResult = NativeCameraResult(
+        file: audioFile,
+        data: audioData,
+        type: NativeMediaType.audio,
+        size: fileSize,
+        path: audioFilePath,
+        name: 'audio_${DateTime.now().millisecondsSinceEpoch}.aac',
+        captureTime: DateTime.now(),
+        mimeType: 'audio/aac',
+      );
+
+      // Upload the audio file
+      final uploadResult = await EnhancedFileUploadService.uploadMediaWithCaching(
+        audioResult,
+        chatId,
+        onProgress: (progress) {
+          // Update message with upload progress
+          final updatedMessage = optimisticMessage.copyWith(
+            metadata: {
+              ...optimisticMessage.metadata!,
+              'upload_progress': progress,
+            },
+          );
+          _updateMessageInChat(chatId, updatedMessage);
+          onUploadProgress?.call(progress);
+        },
+      );
+
+      // Create final message with uploaded URL
+      final uploadCompleteMessage = optimisticMessage.copyWith(
+        content: uploadResult.fileUrl,
+        status: MessageStatus.sent,
+        metadata: {
+          ...optimisticMessage.metadata!,
+          'is_uploading': false,
+          'upload_progress': 1.0,
+          'url': uploadResult.fileUrl,
+          'timestamp': uploadResult.timestamp,
+        },
+      );
+
+      // Send via WebSocket (will queue automatically if disconnected)
+      _chatWebSocketService.sendMessage(
+        chatId: chatId,
+        receiverId: receiverId ?? 0,
+        content: uploadResult.fileUrl,
+        type: 'audio',
+        fileUrl: uploadResult.fileUrl,
+        messageId: tempId, // Pass the temp ID for queue tracking
+      );
+
+      if (!_chatWebSocketService.isConnected) {
+        // Message is queued, show failed status with error icon
+        final queuedMessage = uploadCompleteMessage.copyWith(status: MessageStatus.failed);
+        _updateMessageInChat(chatId, queuedMessage);
+        debugPrint('ChatStateManager: Audio message queued due to disconnection');
+      } else {
+        // Update local state with success
+        _updateMessageInChat(chatId, uploadCompleteMessage);
+      }
+      
+      debugPrint('ChatStateManager: Audio message sent successfully');
+      
+    } catch (e) {
+      debugPrint('ChatStateManager: Failed to send audio message: $e');
+      
+      // Mark message as failed
+      final failedMessage = Message(
+        id: 'audio_${_currentUserId ?? 'unknown'}_${DateTime.now().millisecondsSinceEpoch}',
+        chatId: chatId,
+        senderId: _currentUserId ?? '',
+        content: 'Failed to send audio',
+        timestamp: DateTime.now(),
+        status: MessageStatus.failed,
+        type: MessageType.audio,
+        metadata: {
+          'is_uploading': false,
+          'duration': duration.inMilliseconds,
+          'local_path': audioFilePath,
+          'error': e.toString(),
+        },
+      );
+      
+      _updateMessageInChat(chatId, failedMessage);
+      rethrow;
     }
+  }
+
+  /// Send multimedia message (image, video, audio)
+  Future<void> sendMultimediaMessage({
+    required String chatId,
+    required NativeCameraResult mediaResult,
+    int? receiverId,
+    Function(double)? onUploadProgress,
+  }) async {
+    debugPrint('ChatStateManager: Starting multimedia message send for chat: $chatId');
+    debugPrint('ChatStateManager: WebSocket connected: ${_chatWebSocketService.isConnected}');
+    
+    // Note: Removed connection check to allow queuing when disconnected
 
     try {
-      debugPrint('ChatStateManager: Starting multimedia message send for chat: $chatId');
       
       // Create optimistic message with sending status
       final tempId = 'multimedia_${_currentUserId ?? 'unknown'}_${DateTime.now().millisecondsSinceEpoch}';
@@ -239,28 +383,45 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
         content: uploadResult.timestamp, // Send timestamp as content
         type: mediaResult.type.name,
         fileUrl: uploadResult.fileUrl,
+        messageId: tempId, // Pass the temp ID for queue tracking
       );
 
-      // Update message status to sent
-      final sentMessage = uploadCompleteMessage.copyWith(status: MessageStatus.sent);
-      _updateMessageInChat(chatId, sentMessage);
-
-      debugPrint('ChatStateManager: Multimedia message sent successfully');
+      // Update message status based on connection state
+      if (_chatWebSocketService.isConnected) {
+        // Update message status to sent (optimistic)
+        final sentMessage = uploadCompleteMessage.copyWith(status: MessageStatus.sent);
+        _updateMessageInChat(chatId, sentMessage);
+        debugPrint('ChatStateManager: Multimedia message sent successfully');
+      } else {
+        // Message is queued, show failed status with error icon
+        final queuedMessage = uploadCompleteMessage.copyWith(status: MessageStatus.failed);
+        _updateMessageInChat(chatId, queuedMessage);
+        debugPrint('ChatStateManager: Multimedia message queued due to disconnection');
+      }
 
     } catch (e) {
       debugPrint('ChatStateManager: Failed to send multimedia message: $e');
       
-      // Update message with failed status
+      // Update message with failed status but keep timestamp as content for local caching
       if (_chatMessages.containsKey(chatId)) {
         final messages = _chatMessages[chatId]!;
         final messageIndex = messages.indexWhere((m) => m.id.startsWith('multimedia_${_currentUserId ?? 'unknown'}'));
         
         if (messageIndex != -1) {
+          // Try to get timestamp from the cached media if upload was partial
+          String contentForFailedMessage = 'Failed to send ${mediaResult.type.name}';
+          
+          // Check if we have a timestamp from partial upload
+          final currentMetadata = messages[messageIndex].metadata ?? {};
+          if (currentMetadata.containsKey('timestamp')) {
+            contentForFailedMessage = currentMetadata['timestamp'].toString();
+          }
+          
           final failedMessage = messages[messageIndex].copyWith(
             status: MessageStatus.failed,
-            content: 'Failed to send ${mediaResult.type.name}',
+            content: contentForFailedMessage,
             metadata: {
-              ...messages[messageIndex].metadata ?? {},
+              ...currentMetadata,
               'error': e.toString(),
               'is_uploading': false,
             },
@@ -272,6 +433,119 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
       
       rethrow;
     }
+  }
+
+  /// Retry a failed message (text or multimedia)
+  Future<void> retryFailedMessage(Message message) async {
+    debugPrint('🔄 ChatStateManager: Retrying failed message - ID: ${message.id}, Type: ${message.type}');
+    
+    if (message.status != MessageStatus.failed) {
+      throw Exception('Cannot retry message that is not in failed status');
+    }
+
+    // Update message status to sending
+    final retryingMessage = message.copyWith(
+      status: MessageStatus.sending,
+      metadata: {
+        ...message.metadata ?? {},
+        'is_retrying': true,
+        'retry_count': (message.metadata?['retry_count'] ?? 0) + 1,
+      },
+    );
+    _updateMessageInChat(message.chatId, retryingMessage);
+
+    try {
+      if (message.type == MessageType.text) {
+        // Retry text message
+        await sendMessage(
+          chatId: message.chatId,
+          content: message.content,
+          type: message.type.name,
+          receiverId: message.metadata?['receiver_id'],
+        );
+      } else {
+        // For multimedia messages, check if we have cached media
+        final timestamp = message.content;
+        final cachedFile = await _getCachedMediaFile(timestamp, message.type);
+        
+        if (cachedFile != null) {
+          // Create NativeCameraResult from cached file
+          final mediaResult = await _createMediaResultFromCache(cachedFile, message.type);
+          
+          // Retry multimedia message
+          await sendMultimediaMessage(
+            chatId: message.chatId,
+            mediaResult: mediaResult,
+            receiverId: message.metadata?['receiver_id'],
+            onUploadProgress: (progress) {
+              // Update progress in message metadata
+              final progressMessage = retryingMessage.copyWith(
+                metadata: {
+                  ...retryingMessage.metadata ?? {},
+                  'upload_progress': progress,
+                },
+              );
+              _updateMessageInChat(message.chatId, progressMessage);
+            },
+          );
+        } else {
+          throw Exception('Cached media file not found for retry');
+        }
+      }
+      
+      debugPrint('🔄 ChatStateManager: Message retry successful');
+      
+    } catch (e) {
+      debugPrint('🔄 ChatStateManager: Message retry failed: $e');
+      
+      // Revert to failed status
+      final failedMessage = message.copyWith(
+        status: MessageStatus.failed,
+        metadata: {
+          ...message.metadata ?? {},
+          'retry_error': e.toString(),
+          'last_retry_at': DateTime.now().toIso8601String(),
+        },
+      );
+      _updateMessageInChat(message.chatId, failedMessage);
+      
+      rethrow;
+    }
+  }
+
+  /// Get cached media file for retry
+  Future<File?> _getCachedMediaFile(String timestamp, MessageType type) async {
+    try {
+      final cacheService = LocalMediaCacheService();
+      await cacheService.initialize();
+      
+      final metadata = cacheService.getMediaMetadata(timestamp);
+      if (metadata != null && File(metadata.localPath).existsSync()) {
+        return File(metadata.localPath);
+      }
+      
+      return null;
+    } catch (e) {
+      debugPrint('ChatStateManager: Error getting cached media file: $e');
+      return null;
+    }
+  }
+
+  /// Create NativeCameraResult from cached file
+  Future<NativeCameraResult> _createMediaResultFromCache(File cachedFile, MessageType type) async {
+    final fileBytes = await cachedFile.readAsBytes();
+    final nativeType = type == MessageType.video ? NativeMediaType.video : NativeMediaType.image;
+    
+    return NativeCameraResult(
+      file: cachedFile,
+      data: fileBytes,
+      type: nativeType,
+      size: fileBytes.length,
+      path: cachedFile.path,
+      name: cachedFile.path.split('/').last,
+      captureTime: DateTime.now(),
+      mimeType: type == MessageType.video ? 'video/mp4' : 'image/jpeg',
+    );
   }
 
   /// Create or get a chat with another user
@@ -772,6 +1046,12 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
   void onError(String error) {
     debugPrint('ChatStateManager: WebSocket error: $error');
     _setError(error);
+  }
+
+  /// Debug method to test queue functionality
+  void debugTestMessageQueue() {
+    debugPrint('🧪 ChatStateManager: Testing message queue functionality');
+    _chatWebSocketService.debugTestQueue();
   }
 
   /// Dispose the state manager
