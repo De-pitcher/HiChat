@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/chat.dart';
 import '../../models/message.dart';
 import '../../constants/app_theme.dart';
@@ -11,6 +12,7 @@ import '../../services/chat_state_manager.dart';
 import '../../services/auth_state_manager.dart';
 import '../../services/native_camera_service.dart';
 import '../../services/audio_recording_service.dart';
+import '../../services/local_media_cache_service.dart';
 
 import '../../widgets/chat/image_message_card_enhanced.dart';
 import '../../widgets/chat/audio_message_card.dart';
@@ -22,6 +24,52 @@ extension StringExtension on String {
   String capitalize() {
     if (isEmpty) return this;
     return this[0].toUpperCase() + substring(1);
+  }
+}
+
+/// Optimized state class for message list to minimize rebuilds
+class ChatMessagesState {
+  final List<Message> messages;
+  final bool isLoading;
+  final bool isConnected;
+
+  const ChatMessagesState({
+    required this.messages,
+    required this.isLoading,
+    required this.isConnected,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ChatMessagesState &&
+          runtimeType == other.runtimeType &&
+          messages.length == other.messages.length &&
+          isLoading == other.isLoading &&
+          isConnected == other.isConnected &&
+          _messagesEqual(messages, other.messages);
+
+  @override
+  int get hashCode => 
+      Object.hash(messages.length, isLoading, isConnected, _getMessagesHash());
+
+  bool _messagesEqual(List<Message> a, List<Message> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      // Compare all important properties to detect any changes
+      if (a[i].id != b[i].id || 
+          a[i].status != b[i].status ||
+          a[i].content != b[i].content ||
+          a[i].timestamp != b[i].timestamp ||
+          a[i].type != b[i].type) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  int _getMessagesHash() {
+    return Object.hashAll(messages.map((m) => Object.hash(m.id, m.content, m.status, m.timestamp)));
   }
 }
 
@@ -37,16 +85,31 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  
+  // Edit mode state
+  Message? _editingMessage;
+  bool get _isEditMode => _editingMessage != null;
+  
+  // Read receipts tracking
+  Timer? _readReceiptsTimer;
+  
+  // Auto retry for failed messages
+  Timer? _autoRetryTimer;
+  
   // Note: Floating date indicator variables can be added here for future enhancement
 
   @override
   void initState() {
     super.initState();
     _loadMessages();
+    _setupReadReceipts();
+    _setupAutoRetry();
   }
 
   @override
   void dispose() {
+    _readReceiptsTimer?.cancel();
+    _autoRetryTimer?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -62,10 +125,104 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  /// Send text message
+  void _setupReadReceipts() {
+    // Set up periodic timer to check for unread messages in viewport
+    _readReceiptsTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _markVisibleMessagesAsRead();
+    });
+
+    // Also check when scroll position changes
+    _scrollController.addListener(_onScrollChanged);
+  }
+
+  void _onScrollChanged() {
+    // Mark messages as read when scrolling stops (debounced)
+    _readReceiptsTimer?.cancel();
+    _readReceiptsTimer = Timer(const Duration(milliseconds: 500), () {
+      _markVisibleMessagesAsRead();
+    });
+  }
+
+  void _markVisibleMessagesAsRead() {
+    try {
+      final chatStateManager = Provider.of<ChatStateManager>(context, listen: false);
+      final authManager = Provider.of<AuthStateManager>(context, listen: false);
+      final currentUserId = authManager.currentUser?.id.toString();
+      
+      if (currentUserId == null) return;
+
+      final messages = chatStateManager.getMessagesForChat(widget.chat.id);
+      final unreadMessages = messages
+          .where((message) => 
+              message.senderId != currentUserId && // Not sent by current user
+              !message.isRead && // Not already read
+              _isMessageVisible(message))
+          .toList();
+
+      if (unreadMessages.isNotEmpty) {
+        final messageIds = unreadMessages.map((m) => m.id).toList();
+        chatStateManager.markMessagesAsSeen(widget.chat.id, messageIds);
+        
+        debugPrint('📖 Marked ${messageIds.length} messages as read');
+      }
+    } catch (e) {
+      debugPrint('❌ Error marking messages as read: $e');
+    }
+  }
+
+  bool _isMessageVisible(Message message) {
+    // For now, assume messages are visible if we've scrolled past them
+    // This could be enhanced with more precise viewport detection
+    return _scrollController.hasClients;
+  }
+
+  void _setupAutoRetry() {
+    // Set up periodic timer to check for failed messages and retry them automatically
+    _autoRetryTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      _autoRetryFailedMessages();
+    });
+  }
+
+  void _autoRetryFailedMessages() {
+    try {
+      final chatStateManager = Provider.of<ChatStateManager>(context, listen: false);
+      final messages = chatStateManager.getMessagesForChat(widget.chat.id);
+      
+      final failedMessages = messages
+          .where((message) => 
+              message.isFailed && 
+              _shouldRetryMessage(message))
+          .toList();
+
+      for (final message in failedMessages) {
+        final retryCount = message.metadata?['retry_count'] ?? 0;
+        if (retryCount < 3) { // Max 3 automatic retries
+          debugPrint('🔄 Auto-retrying failed message: ${message.id} (attempt ${retryCount + 1})');
+          _handleMessageRetry(message);
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error in auto-retry: $e');
+    }
+  }
+
+  bool _shouldRetryMessage(Message message) {
+    // Only retry messages that failed recently (within last 5 minutes)
+    final now = DateTime.now();
+    final messageAge = now.difference(message.timestamp);
+    return messageAge.inMinutes <= 5;
+  }
+
+  /// Send text message or save edited message
   Future<void> _sendMessage() async {
     final content = _messageController.text.trim();
     if (content.isEmpty) return;
+
+    // Check if we're in edit mode
+    if (_editingMessage != null) {
+      await _saveEditedMessage();
+      return;
+    }
 
     final authManager = context.read<AuthStateManager>();
     final chatStateManager = context.read<ChatStateManager>();
@@ -278,11 +435,20 @@ class _ChatScreenState extends State<ChatScreen> {
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        // Use jumpTo for better performance when scrolling distance is large
+        final maxExtent = _scrollController.position.maxScrollExtent;
+        final currentPosition = _scrollController.position.pixels;
+        final shouldAnimate = (maxExtent - currentPosition) < 1000; // Only animate for small distances
+        
+        if (shouldAnimate) {
+          _scrollController.animateTo(
+            maxExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        } else {
+          _scrollController.jumpTo(maxExtent);
+        }
       }
     });
   }
@@ -386,22 +552,34 @@ class _ChatScreenState extends State<ChatScreen> {
               child: widget.chat.getDisplayImage(currentUserId) != null
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(20),
-                      child: Image.network(
-                        widget.chat.getDisplayImage(currentUserId)!,
+                      child: CachedNetworkImage(
+                        imageUrl: widget.chat.getDisplayImage(currentUserId)!,
                         width: 40,
                         height: 40,
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Text(
-                            widget.chat
-                                .getDisplayName(currentUserId)[0]
-                                .toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
+                        placeholder: (context, url) => Container(
+                          width: 40,
+                          height: 40,
+                          color: AppColors.primary.withValues(alpha: 0.1),
+                          child: const Center(
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             ),
-                          );
-                        },
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Text(
+                          widget.chat
+                              .getDisplayName(currentUserId)[0]
+                              .toUpperCase(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        memCacheWidth: 80, // Optimize memory usage
+                        memCacheHeight: 80,
                       ),
                     )
                   : Text(
@@ -429,11 +607,16 @@ class _ChatScreenState extends State<ChatScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   if (widget.chat.isDirectChat) ...[
-                    Text(
-                      'Online', // TODO: Get actual online status
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: Colors.green),
+                    Selector<ChatStateManager, bool>(
+                      selector: (context, chatStateManager) => chatStateManager.isConnected,
+                      builder: (context, isConnected, child) {
+                        return Text(
+                          isConnected ? 'Online' : 'Connecting...',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: isConnected ? Colors.green : Colors.orange,
+                          ),
+                        );
+                      },
                     ),
                   ] else ...[
                     Text(
@@ -517,18 +700,20 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: Consumer<ChatStateManager>(
                 builder: (context, chatStateManager, child) {
-                  final messages = chatStateManager.getMessagesForChat(
-                    widget.chat.id,
+                  final messagesState = ChatMessagesState(
+                    messages: chatStateManager.getMessagesForChat(widget.chat.id),
+                    isLoading: chatStateManager.isLoading,
+                    isConnected: chatStateManager.isConnected,
                   );
-                  final isLoading = chatStateManager.isLoading;
-
-                  if (isLoading && messages.isEmpty) {
+                  
+                  debugPrint('🔄 Chat UI rebuilding - Message count: ${messagesState.messages.length}');
+                  if (messagesState.isLoading && messagesState.messages.isEmpty) {
                     return const Center(
                       child: CircularProgressIndicator(strokeWidth: 3),
                     );
                   }
 
-                  if (messages.isEmpty) {
+                  if (messagesState.messages.isEmpty) {
                     return Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -563,7 +748,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               fontSize: 14,
                             ),
                           ),
-                          if (!chatStateManager.isConnected) ...[
+                          if (!messagesState.isConnected) ...[
                             const SizedBox(height: 16),
                             Text(
                               'Connecting...',
@@ -580,37 +765,43 @@ class _ChatScreenState extends State<ChatScreen> {
 
                   // Auto-scroll to bottom when messages are loaded
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (messages.isNotEmpty) {
+                    if (messagesState.messages.isNotEmpty) {
                       _scrollToBottom();
                     }
                   });
 
                   // Group messages by date and insert date separators
                   final groupedItems = date_utils.DateUtils.groupMessagesByDate(
-                    messages,
+                    messagesState.messages,
                   );
 
                   return ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.only(top: 16, bottom: 8),
                     itemCount: groupedItems.length,
+                    // Removed itemExtent to allow flexible heights for media messages
                     itemBuilder: (context, index) {
                       final item = groupedItems[index];
 
                       // Check if this is a date separator
                       if (item is date_utils.DateSeparatorItem) {
-                        return DateSeparator(date: item.date);
+                        return RepaintBoundary(
+                          child: DateSeparator(date: item.date),
+                        );
                       }
 
                       // Otherwise it's a message
                       final message = item as Message;
                       final isCurrentUser = message.senderId == currentUserId;
 
-                      return _MessageBubble(
-                        message: message,
-                        isCurrentUser: isCurrentUser,
-                        chat: widget.chat,
-                        onRetry: _handleMessageRetry,
+                      return RepaintBoundary(
+                        child: _OptimizedMessageBubble(
+                          message: message,
+                          isCurrentUser: isCurrentUser,
+                          chat: widget.chat,
+                          onRetry: _handleMessageRetry,
+                          onEdit: _editMessage,
+                        ),
                       );
                     },
                   );
@@ -623,6 +814,9 @@ class _ChatScreenState extends State<ChatScreen> {
               chat: widget.chat,
               onCameraPressed: _handleCameraResult,
               onGalleryPressed: _handleGallerySelection,
+              isEditMode: _isEditMode,
+              onCancelEdit: _cancelEdit,
+              editingMessage: _editingMessage,
             ),
           ],
         ),
@@ -645,96 +839,259 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _editMessage(Message message) {
-    // Pre-fill the message input with current content for editing
-    _messageController.text = message.content;
+    // Check if message can still be edited (within 10 minutes)
+    final now = DateTime.now();
+    final messageAge = now.difference(message.timestamp);
+    const editTimeLimit = Duration(minutes: 10);
+    
+    if (messageAge > editTimeLimit) {
+      final minutesOld = messageAge.inMinutes;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Messages can only be edited within 10 minutes of sending. This message is $minutesOld minutes old.'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
 
-    // TODO: Implement edit mode with different send behavior
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Message editing not yet implemented'),
-        backgroundColor: Colors.orange,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    // Enter edit mode
+    setState(() {
+      _editingMessage = message;
+      _messageController.text = message.content;
+    });
   }
+
+  void _cancelEdit() {
+    setState(() {
+      _editingMessage = null;
+      _messageController.clear();
+    });
+  }
+
+  Future<void> _saveEditedMessage() async {
+    if (_editingMessage == null || _messageController.text.trim().isEmpty) {
+      return;
+    }
+
+    final newContent = _messageController.text.trim();
+    final messageToEdit = _editingMessage!;
+
+    try {
+      // Call ChatStateManager to edit message
+      final chatStateManager = context.read<ChatStateManager>();
+      await chatStateManager.editMessage(
+        messageToEdit.id,
+        newContent,
+      );
+
+      // Exit edit mode
+      setState(() {
+        _editingMessage = null;
+        _messageController.clear();
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text('Message updated'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      debugPrint('❌ Error editing message: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to edit message: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+
 }
 
-class _MessageBubble extends StatefulWidget {
+class _OptimizedMessageBubble extends StatelessWidget {
   final Message message;
   final bool isCurrentUser;
   final Chat chat;
   final Function(Message)? onRetry;
+  final Function(Message)? onEdit;
 
-  const _MessageBubble({
+  const _OptimizedMessageBubble({
     required this.message,
     required this.isCurrentUser,
     required this.chat,
     this.onRetry,
+    this.onEdit,
   });
 
   @override
-  State<_MessageBubble> createState() => _MessageBubbleState();
-}
-
-class _MessageBubbleState extends State<_MessageBubble>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _slideAnimation;
-  late Animation<double> _fadeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-
-    _slideAnimation =
-        Tween<double>(
-          begin: widget.isCurrentUser ? 30.0 : -30.0,
-          end: 0.0,
-        ).animate(
-          CurvedAnimation(
-            parent: _animationController,
-            curve: Curves.easeOutCubic,
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8, left: 16, right: 16),
+      child: Row(
+        mainAxisAlignment: isCurrentUser
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (!isCurrentUser) ...[
+            Container(
+              margin: const EdgeInsets.only(right: 8, bottom: 4),
+              child: _buildOptimizedAvatar(context),
+            ),
+          ],
+          Flexible(
+            fit: FlexFit.loose,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onLongPress: () => _showMessageOptions(context, message, isCurrentUser),
+                child: (message.isImage ||
+                    message.isVideo ||
+                    message.isAudio)
+                    ? message.isAudio 
+                        ? ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: MediaQuery.of(context).size.width * 0.7,
+                            ),
+                            child: _buildMessageContent(context),
+                          )
+                        : _buildMessageContent(context)
+                    : Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: isCurrentUser
+                              ? LinearGradient(
+                                  colors: [
+                                    AppColors.primary,
+                                    AppColors.primary.withValues(alpha: 0.8),
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                )
+                              : null,
+                          color: isCurrentUser ? null : Colors.grey[100],
+                          borderRadius: BorderRadius.only(
+                            topLeft: const Radius.circular(20),
+                            topRight: const Radius.circular(20),
+                            bottomLeft: Radius.circular(isCurrentUser ? 20 : 4),
+                            bottomRight: Radius.circular(isCurrentUser ? 4 : 20),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: isCurrentUser
+                                  ? AppColors.primary.withValues(alpha: 0.2)
+                                  : Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: _buildMessageContent(context),
+                      ),
+              ),
+            ),
           ),
-        );
-
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+        ],
+      ),
     );
-
-    _animationController.forward();
   }
 
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
+  Widget _buildOptimizedAvatar(BuildContext context) {
+    final currentUserId = context.read<ChatStateManager>().getCurrentUserIdForUI();
+    final displayImage = chat.getDisplayImage(currentUserId);
+    
+    if (displayImage != null) {
+      return CircleAvatar(
+        radius: 16,
+        backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: CachedNetworkImage(
+            imageUrl: displayImage,
+            width: 32,
+            height: 32,
+            fit: BoxFit.cover,
+            placeholder: (context, url) => Container(
+              width: 32,
+              height: 32,
+              color: AppColors.primary.withValues(alpha: 0.1),
+              child: const Center(
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+            errorWidget: (context, url, error) => Text(
+              _getSenderName()[0].toUpperCase(),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primary,
+              ),
+            ),
+            memCacheWidth: 64, // Optimize memory usage
+            memCacheHeight: 64,
+          ),
+        ),
+      );
+    }
+    
+    return CircleAvatar(
+      radius: 16,
+      backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+      child: Text(
+        _getSenderName()[0].toUpperCase(),
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: AppColors.primary,
+        ),
+      ),
+    );
+  }
+
+  String _getSenderName() {
+    // TODO: Get actual sender name from participants
+    return 'User';
   }
 
   /// Build message content based on message type
-  Widget _buildMessageContent() {
+  Widget _buildMessageContent(BuildContext context) {
     // For image and video messages, use the enhanced media card
-    if (widget.message.isImage || widget.message.isVideo) {
+    if (message.isImage || message.isVideo) {
       return ImageMessageCard(
-        message: widget.message,
-        isCurrentUser: widget.isCurrentUser,
-        onRetry: widget.onRetry != null
-            ? () => widget.onRetry!(widget.message)
-            : null,
+        message: message,
+        isCurrentUser: isCurrentUser,
+        onRetry: onRetry != null ? () => onRetry!(message) : null,
       );
     }
 
     // For audio messages, return standalone audio card
-    if (widget.message.isAudio) {
+    if (message.isAudio) {
       return AudioMessageCard(
-        message: widget.message,
-        isCurrentUser: widget.isCurrentUser,
-        onRetry: widget.onRetry != null
-            ? () => widget.onRetry!(widget.message)
-            : null,
+        message: message,
+        isCurrentUser: isCurrentUser,
+        onRetry: onRetry != null ? () => onRetry!(message) : null,
       );
     }
 
@@ -742,7 +1099,7 @@ class _MessageBubbleState extends State<_MessageBubble>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (!widget.isCurrentUser && widget.chat.isGroupChat) ...[
+        if (!isCurrentUser && chat.isGroupChat) ...[
           Text(
             _getSenderName(),
             style: TextStyle(
@@ -756,23 +1113,23 @@ class _MessageBubbleState extends State<_MessageBubble>
         ],
 
         // Message content
-        if (widget.message.isText) ...[
+        if (message.isText) ...[
           Text(
-            widget.message.content,
+            message.content,
             style: TextStyle(
-              color: widget.isCurrentUser ? Colors.white : Colors.black87,
+              color: isCurrentUser ? Colors.white : Colors.black87,
               fontSize: 16,
               fontWeight: FontWeight.w400,
               height: 1.4,
               letterSpacing: 0.1,
             ),
           ),
-        ] else if (widget.message.isFile) ...[
+        ] else if (message.isFile) ...[
           // File message placeholder
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: widget.isCurrentUser
+              color: isCurrentUser
                   ? Colors.white.withValues(alpha: 0.1)
                   : Colors.grey.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
@@ -781,17 +1138,15 @@ class _MessageBubbleState extends State<_MessageBubble>
               children: [
                 Icon(
                   Icons.attach_file,
-                  color: widget.isCurrentUser ? Colors.white : Colors.grey[600],
+                  color: isCurrentUser ? Colors.white : Colors.grey[600],
                   size: 20,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    widget.message.content,
+                    message.content,
                     style: TextStyle(
-                      color: widget.isCurrentUser
-                          ? Colors.white
-                          : Colors.black87,
+                      color: isCurrentUser ? Colors.white : Colors.black87,
                       fontSize: 14,
                     ),
                   ),
@@ -802,168 +1157,121 @@ class _MessageBubbleState extends State<_MessageBubble>
         ],
 
         // Timestamp and status (only for non-media messages)
-        if (!widget.message.isImage && !widget.message.isVideo) ...[
+        if (!message.isImage && !message.isVideo) ...[
           const SizedBox(height: 6),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                _formatTime(widget.message.timestamp),
+                _formatTime(message.timestamp),
                 style: TextStyle(
                   fontSize: 12,
-                  color: widget.isCurrentUser
+                  color: isCurrentUser
                       ? Colors.white.withValues(alpha: 0.8)
                       : Colors.grey[600],
                   fontWeight: FontWeight.w400,
                 ),
               ),
-              if (widget.isCurrentUser) ...[
+              if (isCurrentUser) ...[
                 const SizedBox(width: 6),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: widget.message.status == MessageStatus.failed
-                      ? GestureDetector(
-                          onTap: () => _handleRetryMessage(),
-                          child: Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(
-                              _getStatusIcon(),
-                              key: ValueKey(widget.message.status),
-                              size: 16,
-                              color: _getStatusColor(),
-                            ),
+                message.status == MessageStatus.failed
+                    ? GestureDetector(
+                        onTap: () => _handleRetryMessage(context),
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                        )
-                      : Icon(
-                          _getStatusIcon(),
-                          key: ValueKey(widget.message.status),
-                          size: 16,
-                          color: _getStatusColor(),
+                          child: Icon(
+                            _getStatusIcon(),
+                            size: 16,
+                            color: _getStatusColor(),
+                          ),
                         ),
-                ),
+                      )
+                    : Icon(
+                        _getStatusIcon(),
+                        size: 16,
+                        color: _getStatusColor(),
+                      ),
               ],
             ],
           ),
         ],
-      
       ],
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _animationController,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(_slideAnimation.value, 0),
-          child: Opacity(
-            opacity: _fadeAnimation.value,
-            child: Container(
-              margin: EdgeInsets.only(bottom: 8, left: 16, right: 16),
-              child: Row(
-                mainAxisAlignment: widget.isCurrentUser
-                    ? MainAxisAlignment.end
-                    : MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (!widget.isCurrentUser) ...[
-                    Container(
-                      margin: const EdgeInsets.only(right: 8, bottom: 4),
-                      child: CircleAvatar(
-                        radius: 16,
-                        backgroundColor: AppColors.primary.withValues(
-                          alpha: 0.1,
-                        ),
-                        child: Text(
-                          _getSenderName()[0].toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+  String _formatTime(DateTime time) {
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
 
-                  Flexible(
-                    fit: FlexFit.loose,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onLongPress: () => _showMessageOptions(context),
-                        // borderRadius: BorderRadius.circular(20),
-                        child:
-                            (widget.message.isImage ||
-                                widget.message.isVideo ||
-                                widget.message.isAudio)
-                            ? _buildMessageContent()
-                            : Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: widget.isCurrentUser
-                                      ? LinearGradient(
-                                          colors: [
-                                            AppColors.primary,
-                                            AppColors.primary.withValues(
-                                              alpha: 0.8,
-                                            ),
-                                          ],
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                        )
-                                      : null,
-                                  color: widget.isCurrentUser
-                                      ? null
-                                      : Colors.grey[100],
-                                  borderRadius: BorderRadius.only(
-                                    topLeft: const Radius.circular(20),
-                                    topRight: const Radius.circular(20),
-                                    bottomLeft: Radius.circular(
-                                      widget.isCurrentUser ? 20 : 4,
-                                    ),
-                                    bottomRight: Radius.circular(
-                                      widget.isCurrentUser ? 4 : 20,
-                                    ),
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: widget.isCurrentUser
-                                          ? AppColors.primary.withValues(
-                                              alpha: 0.2,
-                                            )
-                                          : Colors.black.withValues(
-                                              alpha: 0.05,
-                                            ),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: _buildMessageContent(),
-                              ),
-                      ),
-                    ),
-                  ),
-                
-                ],
-              ),
+  IconData _getStatusIcon() {
+    switch (message.status) {
+      case MessageStatus.pending:
+        return Icons.schedule;
+      case MessageStatus.sending:
+        return Icons.schedule;
+      case MessageStatus.sent:
+        return Icons.check;
+      case MessageStatus.delivered:
+        return Icons.done_all;
+      case MessageStatus.read:
+        return Icons.done_all;
+      case MessageStatus.failed:
+        return Icons.error_outline;
+    }
+  }
+
+  Color _getStatusColor() {
+    switch (message.status) {
+      case MessageStatus.pending:
+        return Colors.white.withValues(alpha: 0.7);
+      case MessageStatus.sending:
+        return Colors.white.withValues(alpha: 0.7);
+      case MessageStatus.sent:
+        return Colors.white.withValues(alpha: 0.7);
+      case MessageStatus.delivered:
+        return Colors.white.withValues(alpha: 0.7);
+      case MessageStatus.read:
+        return Colors.lightBlue[200]!;
+      case MessageStatus.failed:
+        return Colors.red[300]!;
+    }
+  }
+
+  void _handleRetryMessage(BuildContext context) {
+    debugPrint('🔄 Retry button tapped for message: ${message.id}');
+
+    // Show retry confirmation
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Retry Message'),
+          content: Text('Retry sending this ${message.type.name}?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
             ),
-          ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                onRetry?.call(message);
+              },
+              child: const Text('Retry'),
+            ),
+          ],
         );
       },
     );
   }
 
-  void _showMessageOptions(BuildContext context) {
+  void _showMessageOptions(BuildContext context, Message message, bool isCurrentUser) {
     final theme = Theme.of(context);
 
     showModalBottomSheet(
@@ -1006,7 +1314,7 @@ class _MessageBubbleState extends State<_MessageBubble>
               ),
               onTap: () {
                 Navigator.pop(context);
-                _copyMessage();
+                _copyMessage(context, message);
               },
             ),
 
@@ -1019,7 +1327,7 @@ class _MessageBubbleState extends State<_MessageBubble>
               ),
               onTap: () {
                 Navigator.pop(context);
-                _replyToMessage();
+                _replyToMessage(context, message);
               },
             ),
 
@@ -1032,23 +1340,25 @@ class _MessageBubbleState extends State<_MessageBubble>
               ),
               onTap: () {
                 Navigator.pop(context);
-                _forwardMessage();
+                _forwardMessage(context, message);
               },
             ),
 
             // Show edit and delete only for current user's messages
-            if (widget.isCurrentUser) ...[
-              ListTile(
-                leading: Icon(Icons.edit, color: theme.iconTheme.color),
-                title: Text(
-                  'Edit',
-                  style: TextStyle(color: theme.textTheme.bodyLarge?.color),
+            if (isCurrentUser) ...[
+              // Edit option only for text messages within 10 minutes of creation
+              if (message.type == MessageType.text && _canEditMessage(message))
+                ListTile(
+                  leading: Icon(Icons.edit, color: theme.iconTheme.color),
+                  title: Text(
+                    'Edit',
+                    style: TextStyle(color: theme.textTheme.bodyLarge?.color),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    onEdit?.call(message);
+                  },
                 ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _editMessage();
-                },
-              ),
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
                 title: const Text(
@@ -1057,7 +1367,7 @@ class _MessageBubbleState extends State<_MessageBubble>
                 ),
                 onTap: () {
                   Navigator.pop(context);
-                  _deleteMessage();
+                  _deleteMessage(context, message);
                 },
               ),
             ],
@@ -1067,115 +1377,50 @@ class _MessageBubbleState extends State<_MessageBubble>
     );
   }
 
-  String _getSenderName() {
-    // TODO: Get actual sender name from participants
-    return 'User';
-  }
-
-  String _formatTime(DateTime time) {
-    final hour = time.hour.toString().padLeft(2, '0');
-    final minute = time.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
-  }
-
-  IconData _getStatusIcon() {
-    switch (widget.message.status) {
-      case MessageStatus.pending:
-        return Icons.schedule;
-      case MessageStatus.sending:
-        return Icons.schedule;
-      case MessageStatus.sent:
-        return Icons.check;
-      case MessageStatus.delivered:
-        return Icons.done_all;
-      case MessageStatus.read:
-        return Icons.done_all;
-      case MessageStatus.failed:
-        return Icons.error_outline;
-    }
-  }
-
-  Color _getStatusColor() {
-    switch (widget.message.status) {
-      case MessageStatus.pending:
-        return Colors.white.withValues(alpha: 0.7);
-      case MessageStatus.sending:
-        return Colors.white.withValues(alpha: 0.7);
-      case MessageStatus.sent:
-        return Colors.white.withValues(alpha: 0.7);
-      case MessageStatus.delivered:
-        return Colors.white.withValues(alpha: 0.7);
-      case MessageStatus.read:
-        return Colors.lightBlue[200]!;
-      case MessageStatus.failed:
-        return Colors.red[300]!;
-    }
-  }
-
-  void _handleRetryMessage() {
-    debugPrint('🔄 Retry button tapped for message: ${widget.message.id}');
-
-    // Show retry confirmation
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Retry Message'),
-          content: Text('Retry sending this ${widget.message.type.name}?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                widget.onRetry?.call(widget.message);
-              },
-              child: const Text('Retry'),
-            ),
-          ],
-        );
-      },
+  void _copyMessage(BuildContext context, Message message) {
+    Clipboard.setData(ClipboardData(text: message.content));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Message copied to clipboard'),
+        backgroundColor: AppColors.primary,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 
-  void _copyMessage() {
-    Clipboard.setData(ClipboardData(text: widget.message.content));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Message copied to clipboard'),
-          backgroundColor: AppColors.primary,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+  /// Check if message can be edited (within 10 minutes of creation)
+  bool _canEditMessage(Message message) {
+    final now = DateTime.now();
+    final messageAge = now.difference(message.timestamp);
+    const editTimeLimit = Duration(minutes: 10);
+    
+    final canEdit = messageAge <= editTimeLimit;
+    
+    if (!canEdit) {
+      final minutesOld = messageAge.inMinutes;
+      debugPrint('📝 Message ${message.id} is $minutesOld minutes old - edit disabled (limit: 10 minutes)');
     }
+    
+    return canEdit;
   }
 
-  void _replyToMessage() {
+  void _replyToMessage(BuildContext context, Message message) {
     // Find the parent ChatScreen state to handle reply
     final chatScreenState = context.findAncestorStateOfType<_ChatScreenState>();
     if (chatScreenState != null) {
-      chatScreenState._setReplyToMessage(widget.message);
+      chatScreenState._setReplyToMessage(message);
     }
   }
 
-  void _forwardMessage() {
+  void _forwardMessage(BuildContext context, Message message) {
     // Navigate to contact selection for forwarding
-    Navigator.pushNamed(context, '/forward-message', arguments: widget.message);
+    Navigator.pushNamed(context, '/forward-message', arguments: message);
   }
 
-  void _editMessage() {
-    // Find the parent ChatScreen state to handle editing
-    final chatScreenState = context.findAncestorStateOfType<_ChatScreenState>();
-    if (chatScreenState != null) {
-      chatScreenState._editMessage(widget.message);
-    }
-  }
 
-  void _deleteMessage() {
+
+  void _deleteMessage(BuildContext context, Message message) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -1190,7 +1435,7 @@ class _MessageBubbleState extends State<_MessageBubble>
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                _performDeleteMessage();
+                _performDeleteMessage(context, message);
               },
               child: const Text('Delete', style: TextStyle(color: Colors.red)),
             ),
@@ -1200,22 +1445,110 @@ class _MessageBubbleState extends State<_MessageBubble>
     );
   }
 
-  void _performDeleteMessage() {
-    // TODO: Implement actual delete functionality
-    // final chatStateManager = context.read<ChatStateManager>();
-    // chatStateManager.deleteMessage(widget.message.chatId, widget.message.id);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Message deletion not yet implemented'),
+  void _performDeleteMessage(BuildContext context, Message message) async {
+    final chatStateManager = Provider.of<ChatStateManager>(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    
+    try {
+      debugPrint('🗑️ Deleting message: ${message.id} (${message.type})');
+      
+      // If it's a media message, clean up cached files first
+      if (message.isImage || message.isVideo || message.isAudio) {
+        await _cleanupMediaCache(message);
+      }
+      
+      // Send delete request via WebSocket and wait for response
+      // The server will respond with 'message_deleted' event which will update the UI
+      await chatStateManager.deleteMessage(message.id);
+      
+      // Show loading feedback while waiting for server response
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Deleting message...'),
           backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      
+      // Note: The actual UI update will happen when the WebSocket receives 
+      // the 'message_deleted' response from the server, which calls 
+      // ChatStateManager.onMessageDeleted() and triggers notifyListeners()
+      
+    } catch (e) {
+      debugPrint('❌ Error deleting message: $e');
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Failed to delete message'),
+          backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ),
       );
     }
   }
+
+  /// Clean up cached media files for deleted messages
+  Future<void> _cleanupMediaCache(Message message) async {
+    try {
+      debugPrint('🧹 Cleaning up media cache for message: ${message.id}');
+      
+      // Get file URL from message metadata
+      final fileUrl = message.fileUrl;
+      
+      // For cached_network_image, clear from cache if we have a URL
+      if (message.isImage && fileUrl != null) {
+        final CachedNetworkImageProvider imageProvider = CachedNetworkImageProvider(fileUrl);
+        await imageProvider.evict();
+        debugPrint('🖼️ Cleared image cache for: ${message.id}');
+      }
+      
+      // For locally cached media (audio, video, images), use LocalMediaCacheService
+      if (message.isAudio || message.isVideo || message.isImage) {
+        try {
+          // The message content might contain a timestamp used as cache key
+          final timestamp = message.content;
+          if (timestamp.isNotEmpty) {
+            final LocalMediaCacheService cacheService = LocalMediaCacheService();
+            await cacheService.initialize();
+            
+            // Get cached media metadata to check if it exists
+            final metadata = cacheService.getMediaMetadata(timestamp);
+            if (metadata != null) {
+              // Delete the actual cached file
+              final cachedFile = File(metadata.localPath);
+              if (await cachedFile.exists()) {
+                await cachedFile.delete();
+                debugPrint('🗑️ Deleted cached file: ${metadata.localPath}');
+              }
+              
+              // Delete thumbnail if it exists (for videos)
+              if (metadata.thumbnailPath != null) {
+                final thumbnailFile = File(metadata.thumbnailPath!);
+                if (await thumbnailFile.exists()) {
+                  await thumbnailFile.delete();
+                  debugPrint('🗑️ Deleted thumbnail: ${metadata.thumbnailPath}');
+                }
+              }
+              
+              debugPrint('🗑️ Cleaned up local cache for ${message.type}: $timestamp');
+            } else {
+              debugPrint('ℹ️ No local cache metadata found for ${message.type}: $timestamp');
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ Error removing local media cache: $e');
+        }
+      }
+      
+    } catch (e) {
+      debugPrint('⚠️ Error cleaning up media cache: $e');
+      // Don't throw - cache cleanup failure shouldn't block message deletion
+    }
+  }
 }
+
+// Old _MessageBubble and _MessageBubbleState classes removed for performance optimization
+// Now using _OptimizedMessageBubble (StatelessWidget) instead
 
 class _MessageInput extends StatefulWidget {
   final TextEditingController controller;
@@ -1223,6 +1556,9 @@ class _MessageInput extends StatefulWidget {
   final VoidCallback? onCameraPressed;
   final VoidCallback? onGalleryPressed;
   final Chat chat;
+  final bool isEditMode;
+  final VoidCallback? onCancelEdit;
+  final Message? editingMessage;
 
   const _MessageInput({
     required this.controller,
@@ -1230,6 +1566,9 @@ class _MessageInput extends StatefulWidget {
     required this.chat,
     this.onCameraPressed,
     this.onGalleryPressed,
+    this.isEditMode = false,
+    this.onCancelEdit,
+    this.editingMessage,
   });
 
   @override
@@ -1237,13 +1576,11 @@ class _MessageInput extends StatefulWidget {
 }
 
 class _MessageInputState extends State<_MessageInput>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   bool _hasText = false;
   bool _isRecording = false;
   late AnimationController _animationController;
-  late AnimationController _micAnimationController;
   late Animation<double> _scaleAnimation;
-  late Animation<double> _micPulseAnimation;
   late final AudioRecordingService _audioRecordingService;
 
   // Recording timer state
@@ -1262,17 +1599,8 @@ class _MessageInputState extends State<_MessageInput>
       vsync: this,
     );
 
-    _micAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
-      vsync: this,
-    );
-
     _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
-    );
-
-    _micPulseAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
-      CurvedAnimation(parent: _micAnimationController, curve: Curves.easeInOut),
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
     );
   }
 
@@ -1280,7 +1608,6 @@ class _MessageInputState extends State<_MessageInput>
   void dispose() {
     widget.controller.removeListener(_onTextChanged);
     _animationController.dispose();
-    _micAnimationController.dispose();
     _stopRecordingTimer();
     super.dispose();
   }
@@ -1392,7 +1719,7 @@ class _MessageInputState extends State<_MessageInput>
         _isRecording = true;
       });
 
-      _micAnimationController.repeat(reverse: true);
+      _animationController.repeat(reverse: true);
       _startRecordingTimer();
 
       // Listen to duration stream for UI updates
@@ -1427,8 +1754,8 @@ class _MessageInputState extends State<_MessageInput>
         _isRecording = false;
       });
 
-      _micAnimationController.stop();
-      _micAnimationController.reset();
+      _animationController.stop();
+      _animationController.reset();
       _stopRecordingTimer();
 
       if (recordingPath != null) {
@@ -1450,8 +1777,8 @@ class _MessageInputState extends State<_MessageInput>
       setState(() {
         _isRecording = false;
       });
-      _micAnimationController.stop();
-      _micAnimationController.reset();
+      _animationController.stop();
+      _animationController.reset();
       _stopRecordingTimer();
 
       if (mounted) {
@@ -1474,8 +1801,8 @@ class _MessageInputState extends State<_MessageInput>
         _isRecording = false;
       });
 
-      _micAnimationController.stop();
-      _micAnimationController.reset();
+      _animationController.stop();
+      _animationController.reset();
       _stopRecordingTimer();
 
       if (mounted) {
@@ -1491,8 +1818,8 @@ class _MessageInputState extends State<_MessageInput>
       setState(() {
         _isRecording = false;
       });
-      _micAnimationController.stop();
-      _micAnimationController.reset();
+      _animationController.stop();
+      _animationController.reset();
       _stopRecordingTimer();
     }
   }
@@ -1510,7 +1837,6 @@ class _MessageInputState extends State<_MessageInput>
     return Stack(
       children: [
         Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           decoration: BoxDecoration(
             color: Theme.of(context).scaffoldBackgroundColor,
             boxShadow: [
@@ -1524,12 +1850,110 @@ class _MessageInputState extends State<_MessageInput>
           ),
           child: SafeArea(
             top: false,
-            child: _isRecording
-                ? _buildRecordingInterface()
-                : _buildNormalInterface(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Edit message indicator
+                if (widget.isEditMode && widget.editingMessage != null)
+                  _buildEditIndicator(),
+                
+                // Input area
+                Container(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  child: _isRecording
+                      ? _buildRecordingInterface()
+                      : _buildNormalInterface(),
+                ),
+              ],
+            ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildEditIndicator() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isDark 
+            ? const Color(0xFF2A2A2A) 
+            : const Color(0xFFF5F5F5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark 
+              ? const Color(0xFF404040) 
+              : const Color(0xFFE0E0E0),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 32,
+            decoration: BoxDecoration(
+              color: const Color(0xFF25D366), // WhatsApp green
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Icon(
+            Icons.edit_rounded,
+            size: 16,
+            color: const Color(0xFF25D366),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Edit message',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFF25D366),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  widget.editingMessage!.content.length > 40
+                      ? '${widget.editingMessage!.content.substring(0, 40)}...'
+                      : widget.editingMessage!.content,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onCancelEdit,
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1537,8 +1961,10 @@ class _MessageInputState extends State<_MessageInput>
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        // Attachment button
-        Container(
+
+        // Attachment button (hidden in edit mode)
+        if (!widget.isEditMode)
+          Container(
           margin: const EdgeInsets.only(right: 8, bottom: 4),
           child: Material(
             color: Colors.transparent,
@@ -1578,7 +2004,7 @@ class _MessageInputState extends State<_MessageInput>
                 color: Theme.of(context).textTheme.bodyLarge?.color,
               ),
               decoration: InputDecoration(
-                hintText: 'Type a message...',
+                hintText: widget.isEditMode ? 'Edit message...' : 'Type a message...',
                 hintStyle: TextStyle(
                   color: Theme.of(context).hintColor,
                   fontSize: 16,
@@ -1683,8 +2109,8 @@ class _MessageInputState extends State<_MessageInput>
                             ),
                           ],
                         ),
-                        child: const Icon(
-                          Icons.send_rounded,
+                        child: Icon(
+                          widget.isEditMode ? Icons.check_rounded : Icons.send_rounded,
                           size: 24,
                           color: Colors.white,
                         ),
@@ -1693,10 +2119,10 @@ class _MessageInputState extends State<_MessageInput>
                   ),
                 )
               : AnimatedBuilder(
-                  animation: _micPulseAnimation,
+                  animation: _animationController,
                   builder: (context, child) {
                     return Transform.scale(
-                      scale: _isRecording ? _micPulseAnimation.value : 1.0,
+                      scale: _isRecording ? (1.0 + _animationController.value * 0.2) : 1.0,
                       child: Material(
                         color: Colors.transparent,
                         child: InkWell(
@@ -1769,10 +2195,10 @@ class _MessageInputState extends State<_MessageInput>
                   shape: BoxShape.circle,
                 ),
                 child: AnimatedBuilder(
-                  animation: _micAnimationController,
+                  animation: _animationController,
                   builder: (context, child) {
                     return Transform.scale(
-                      scale: 0.8 + (_micPulseAnimation.value - 1.0) * 0.2,
+                      scale: 0.8 + _animationController.value * 0.4,
                       child: Container(
                         decoration: const BoxDecoration(
                           color: Colors.red,

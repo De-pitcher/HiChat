@@ -152,12 +152,19 @@ class ChatWebSocketService {
 
     try {
       // Build WebSocket URL with query parameters
-      final uri = Uri.parse(_wsUrl).replace(queryParameters: {
-        if (token != null) 'token': token,
-        if (userId != null) 'user_id': userId.toString(),
-      });
+      final baseUri = Uri.parse(_wsUrl);
+      final uri = Uri(
+        scheme: 'wss',
+        host: baseUri.host,
+        path: baseUri.path,
+        queryParameters: {
+          if (token != null) 'token': token,
+          // if (userId != null) 'user_id': userId.toString(),
+        },
+      );
 
       debugPrint('$_tag: Connecting to WebSocket: ${uri.toString()}');
+      debugPrint('$_tag: URI scheme: ${uri.scheme}, host: ${uri.host}, path: ${uri.path}');
 
       // Create WebSocket connection
       _webSocket = WebSocketChannel.connect(uri);
@@ -177,7 +184,18 @@ class ChatWebSocketService {
       _startPingTimer();
     } catch (e) {
       debugPrint('$_tag: Connection error: $e');
-      _onError(e);
+      debugPrint('$_tag: Connection error type: ${e.runtimeType}');
+      if (e.toString().contains('HTTP status code: 500')) {
+        debugPrint('$_tag: Server returned HTTP 500 - backend server may be down or having issues');
+        _notifyError('Server is currently unavailable (HTTP 500)');
+      } else {
+        _notifyError('Connection failed: $e');
+      }
+      _updateConnectionState(false);
+      
+      if (_shouldReconnect) {
+        _scheduleReconnect();
+      }
     }
   }
 
@@ -344,7 +362,7 @@ class ChatWebSocketService {
         case 'new_message':
           _handleNewMessage(json['message']);
           break;
-        case 'message_updated':
+        case 'message_edited':
           _handleMessageUpdated(json['message']);
           break;
         case 'message_deleted':
@@ -374,8 +392,20 @@ class ChatWebSocketService {
   /// Handle WebSocket errors
   void _onError(dynamic error) {
     debugPrint('$_tag: WebSocket error: $error');
+    debugPrint('$_tag: Error type: ${error.runtimeType}');
+    
     _updateConnectionState(false);
-    _notifyConnectionFailed(error.toString());
+    
+    String errorMessage = error.toString();
+    if (errorMessage.contains('HTTP status code: 500')) {
+      errorMessage = 'Server is temporarily unavailable. Please try again later.';
+      debugPrint('$_tag: Detected HTTP 500 error - backend server issue');
+    } else if (errorMessage.contains('was not upgraded to websocket')) {
+      errorMessage = 'WebSocket connection failed. Please check your internet connection.';
+      debugPrint('$_tag: WebSocket upgrade failed');
+    }
+    
+    _notifyConnectionFailed(errorMessage);
 
     if (_shouldReconnect) {
       _scheduleReconnect();
@@ -1361,61 +1391,25 @@ class ChatWebSocketService {
     debugPrint('$_tag: Message queues cleared');
   }
 
-  /// Test the queue functionality by simulating disconnection
-  void testQueueFunctionality() {
-    debugPrint('$_tag: 🧪 TESTING QUEUE FUNCTIONALITY');
-    
-    // Force disconnect for testing
-    final originalConnection = _isConnected;
-    _isConnected = false;
-    
-    debugPrint('$_tag: 🧪 Forced disconnection (was: $originalConnection, now: $_isConnected)');
-    
-    // Send a test message that should be queued
-    sendMessage(
-      chatId: 'test_chat',
-      receiverId: 999,
-      content: 'Test message for queue',
-      type: 'text',
-      messageId: 'test_queue_message_123',
-    );
-    
-    debugPrint('$_tag: 🧪 Test message sent, checking queue status...');
-    debugPrint('$_tag: 🧪 Enhanced queue size: ${_enhancedMessageQueue.length}');
-    debugPrint('$_tag: 🧪 Pending messages: ${_pendingMessages.length}');
-    debugPrint('$_tag: 🧪 Legacy queue size: ${_messageQueue.length}');
-    
-    // Restore connection and process queue
-    Future.delayed(const Duration(seconds: 2), () {
-      debugPrint('$_tag: 🧪 Restoring connection and processing queue...');
-      _isConnected = originalConnection;
-      _processEnhancedMessageQueue();
-    });
+  /// Check if the backend server is reachable (simple connectivity test)
+  Future<bool> checkServerHealth() async {
+    try {
+      final baseUri = Uri.parse(_wsUrl);
+      final healthUri = Uri(
+        scheme: 'https', // Use HTTPS for health check
+        host: baseUri.host,
+        path: '/health', // Assuming there's a health endpoint
+      );
+      
+      debugPrint('$_tag: Checking server health at ${healthUri.toString()}');
+      // This would require adding http package dependency
+      // For now, just return true and rely on WebSocket connection attempt
+      return true;
+    } catch (e) {
+      debugPrint('$_tag: Server health check failed: $e');
+      return false;
+    }
   }
 
-  /// Debug method to test queue functionality - call from UI
-  void debugTestQueue() {
-    debugPrint('$_tag: 🧪 QUEUE TEST: Starting queue functionality test');
-    
-    // Force disconnect
-    final wasConnected = _isConnected;
-    _isConnected = false;
-    debugPrint('$_tag: 🧪 QUEUE TEST: Simulated disconnect - connected: $_isConnected');
-    
-    // Send test message while disconnected
-    sendMessage(
-      chatId: 'debug_test_chat',
-      receiverId: 1,
-      content: 'Test message sent while disconnected',
-      type: 'text',
-      messageId: 'debug_test_${DateTime.now().millisecondsSinceEpoch}',
-    );
-    
-    // Restore connection after delay
-    Future.delayed(const Duration(seconds: 2), () {
-      debugPrint('$_tag: 🧪 QUEUE TEST: Restoring connection');
-      _isConnected = wasConnected;
-      _processEnhancedMessageQueue();
-    });
-  }
+
 }

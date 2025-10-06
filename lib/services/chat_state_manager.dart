@@ -84,7 +84,9 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
 
   /// Get messages for a specific chat
   List<Message> getMessagesForChat(String chatId) {
-    return _chatMessages[chatId] ?? [];
+    // Return a new list instance to ensure UI detects changes
+    final messages = _chatMessages[chatId] ?? [];
+    return List<Message>.from(messages);
   }
 
   /// Get a specific chat by ID
@@ -707,6 +709,7 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
   void _addMessageToChat(String chatId, Message message) {
     _chatMessages.putIfAbsent(chatId, () => []);
     _chatMessages[chatId]!.add(message);
+    debugPrint('🔄 ChatStateManager: Added message ${message.id} to chat $chatId. Total messages: ${_chatMessages[chatId]!.length}');
     
     // Update chat's last message and activity
     if (_chats.containsKey(chatId)) {
@@ -745,18 +748,26 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
     if (messages != null) {
       final index = messages.indexWhere((m) => m.id == updatedMessage.id);
       if (index != -1) {
+        final oldContent = messages[index].content;
         messages[index] = updatedMessage;
+        debugPrint('🔄 ChatStateManager: Updated message ${updatedMessage.id} content: "$oldContent" → "${updatedMessage.content}"');
         
         // Update chat's last message if this is the latest message
         if (_chats.containsKey(chatId)) {
           final chat = _chats[chatId]!;
           if (chat.lastMessage?.id == updatedMessage.id) {
             _chats[chatId] = chat.copyWith(lastMessage: updatedMessage);
+            debugPrint('🔄 ChatStateManager: Updated last message for chat $chatId');
           }
         }
         
+        debugPrint('🔄 ChatStateManager: Notifying listeners for message update');
         notifyListeners();
+      } else {
+        debugPrint('⚠️ ChatStateManager: Message ${updatedMessage.id} not found in chat $chatId for update');
       }
+    } else {
+      debugPrint('⚠️ ChatStateManager: Chat $chatId not found for message update');
     }
   }
 
@@ -919,7 +930,7 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
 
   @override
   void onMessageUpdated(Message message) {
-    debugPrint('ChatStateManager: Message updated: ${message.id}');
+    debugPrint('📝 ChatStateManager: Message updated received - ID: ${message.id}, Content: "${message.content}"');
     _updateMessageInChat(message.chatId, message);
   }
 
@@ -929,7 +940,10 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
     
     final messages = _chatMessages[chatId];
     if (messages != null) {
+      final beforeCount = messages.length;
       messages.removeWhere((m) => m.id == messageId);
+      final afterCount = messages.length;
+      debugPrint('🔄 ChatStateManager: Removed message $messageId from chat $chatId. Messages: $beforeCount → $afterCount');
       notifyListeners();
     }
   }
@@ -1048,10 +1062,66 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
     _setError(error);
   }
 
+  /// Edit a message
+  Future<void> editMessage(String messageId, String newContent) async {
+    if (!_chatWebSocketService.isConnected) {
+      throw Exception('Not connected to chat service');
+    }
+
+    try {
+      // Find the message to edit for optimistic update
+      Message? messageToEdit;
+      String? chatId;
+      
+      for (final entry in _chatMessages.entries) {
+        final messages = entry.value.cast<Message>();
+        for (final message in messages) {
+          if (message.id == messageId) {
+            messageToEdit = message;
+            chatId = entry.key;
+            break;
+          }
+        }
+        if (messageToEdit != null) break;
+      }
+      
+      // Perform optimistic update
+      if (messageToEdit != null && chatId != null) {
+        final optimisticMessage = messageToEdit.copyWith(
+          content: newContent,
+          status: MessageStatus.sending, // Show as sending
+        );
+        debugPrint('📝 ChatStateManager: Optimistic update for message $messageId: "${messageToEdit.content}" → "$newContent"');
+        _updateMessageInChat(chatId, optimisticMessage);
+      }
+      
+      _chatWebSocketService.updateMessage(messageId, newContent);
+      debugPrint('📝 ChatStateManager: Edit message request sent for: $messageId');
+    } catch (e) {
+      debugPrint('❌ ChatStateManager: Failed to edit message: $e');
+      throw Exception('Failed to edit message: $e');
+    }
+  }
+
+  /// Delete a message
+  Future<void> deleteMessage(String messageId) async {
+    if (!_chatWebSocketService.isConnected) {
+      throw Exception('Not connected to chat service');
+    }
+
+    try {
+      _chatWebSocketService.deleteMessage(messageId);
+      debugPrint('ChatStateManager: Delete message request sent for: $messageId');
+    } catch (e) {
+      debugPrint('ChatStateManager: Failed to delete message: $e');
+      throw Exception('Failed to delete message: $e');
+    }
+  }
+
   /// Debug method to test queue functionality
   void debugTestMessageQueue() {
     debugPrint('🧪 ChatStateManager: Testing message queue functionality');
-    _chatWebSocketService.debugTestQueue();
+    // _chatWebSocketService.debugTestQueue();
   }
 
   /// Dispose the state manager
