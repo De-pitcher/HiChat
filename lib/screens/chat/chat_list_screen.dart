@@ -2,11 +2,62 @@ import 'package:flutter/material.dart';
 import 'package:hichat_app/constants/app_constants.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/chat.dart';
 import '../../models/message.dart';
 import '../../constants/app_theme.dart';
 import '../../services/auth_state_manager.dart';
 import '../../services/chat_state_manager.dart';
+
+/// Optimized state class for chat list to reduce rebuilds
+class ChatListState {
+  final List<Chat> chats;
+  final bool isLoading;
+  final bool hasError;
+  final String? errorMessage;
+  final bool isConnected;
+
+  const ChatListState({
+    required this.chats,
+    required this.isLoading,
+    required this.hasError,
+    required this.errorMessage,
+    required this.isConnected,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is ChatListState &&
+        other.chats.length == chats.length &&
+        other.isLoading == isLoading &&
+        other.hasError == hasError &&
+        other.errorMessage == errorMessage &&
+        other.isConnected == isConnected &&
+        _listsEqual(other.chats, chats);
+  }
+
+  @override
+  int get hashCode {
+    return Object.hash(
+      chats.length,
+      isLoading,
+      hasError,
+      errorMessage,
+      isConnected,
+    );
+  }
+
+  bool _listsEqual(List<Chat> a, List<Chat> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id || a[i].lastActivity != b[i].lastActivity) {
+        return false;
+      }
+    }
+    return true;
+  }
+}
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -16,11 +67,20 @@ class ChatListScreen extends StatefulWidget {
 }
 
 class _ChatListScreenState extends State<ChatListScreen> {
+  late final ScrollController _scrollController;
+  
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController();
     // ChatStateManager is automatically initialized via AuthStateManager
     // No need to manually load chats here
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
   
   Future<void> _refreshChats() async {
@@ -217,7 +277,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
-  Widget _buildEmptyState(ChatStateManager chatStateManager) {
+  Widget _buildEmptyState(bool isConnected) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -260,7 +320,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
             const SizedBox(height: 16),
             
             // Connection status
-            if (!chatStateManager.isConnected) ...[
+            if (!isConnected) ...[
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
@@ -467,12 +527,22 @@ class _ChatListScreenState extends State<ChatListScreen> {
           ),
         ],
       ),
-      body: Consumer<ChatStateManager>(
-        builder: (context, chatStateManager, child) {
-          final chats = chatStateManager.chats;
-          final isLoading = chatStateManager.isLoading;
-          final hasError = chatStateManager.hasError;
-          final errorMessage = chatStateManager.errorMessage;
+      body: Selector<ChatStateManager, ChatListState>(
+        selector: (context, chatManager) => ChatListState(
+          chats: chatManager.chats,
+          isLoading: chatManager.isLoading,
+          hasError: chatManager.hasError,
+          errorMessage: chatManager.errorMessage,
+          isConnected: chatManager.isConnected,
+        ),
+        builder: (context, state, child) {
+          final chats = state.chats;
+          final isLoading = state.isLoading;
+          final hasError = state.hasError;
+          final errorMessage = state.errorMessage;
+          
+          // Get ChatStateManager for method calls (but not for rebuilds)
+          final chatStateManager = context.read<ChatStateManager>();
           
           // Show shimmer loading effect
           if (isLoading && chats.isEmpty) {
@@ -486,7 +556,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           
           // Show empty state
           if (chats.isEmpty && !isLoading) {
-            return _buildEmptyState(chatStateManager);
+            return _buildEmptyState(state.isConnected);
           }
           
           // Show chat list with pull-to-refresh
@@ -509,22 +579,27 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 if (hasError && chats.isNotEmpty)
                   _buildErrorBanner(errorMessage!, chatStateManager),
                 
-                // Chat list
+                // Chat list - optimized with performance improvements
                 Expanded(
                   child: ListView.builder(
+                    controller: _scrollController,
                     physics: const AlwaysScrollableScrollPhysics(),
                     itemCount: chats.length,
+                    itemExtent: 80.0, // Fixed item height for better performance
                     itemBuilder: (context, index) {
                       final chat = chats[index];
-                      return AnimatedContainer(
-                        duration: Duration(milliseconds: 300 + (index * 50)),
-                        curve: Curves.easeOutCubic,
-                        child: _ChatListItem(
+                      return RepaintBoundary(
+                        child: _OptimizedChatListItem(
+                          key: ValueKey(chat.id), // Use ValueKey for better performance
                           chat: chat,
                           onTap: () => _navigateToChat(chat),
                         ),
                       );
                     },
+                    // Performance optimizations
+                    cacheExtent: 1000.0, // Cache more items for smooth scrolling
+                    addAutomaticKeepAlives: false, // Don't keep alive items off-screen
+                    addRepaintBoundaries: true, // Add repaint boundaries for better performance
                   ),
                 ),
               ],
@@ -544,107 +619,138 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 }
 
-class _ChatListItem extends StatelessWidget {
+class _OptimizedChatListItem extends StatelessWidget {
   final Chat chat;
   final VoidCallback onTap;
 
-  const _ChatListItem({
+  const _OptimizedChatListItem({
+    super.key,
     required this.chat,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final chatStateManager = context.read<ChatStateManager>();
-    final currentUserId = chatStateManager.getCurrentUserIdForUI();
+    return Selector<ChatStateManager, String>(
+      selector: (context, chatManager) => chatManager.getCurrentUserIdForUI(),
+      builder: (context, currentUserId, child) {
+        return _buildChatItem(context, currentUserId);
+      },
+    );
+  }
+
+  Widget _buildChatItem(BuildContext context, String currentUserId) {
+    // Cache expensive operations
+    final displayName = _getSafeDisplayName(chat, currentUserId);
+    final displayImage = chat.getDisplayImage(currentUserId);
+    final hasUnreadMessages = chat.hasUnreadMessages;
+    final lastActivity = chat.lastActivity;
     
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
+    return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
+        color: hasUnreadMessages ? Colors.grey.withValues(alpha: 0.05) : null,
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      leading: CircleAvatar(
-        backgroundColor: AppColors.primary,
-        child: chat.getDisplayImage(currentUserId) != null
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Image.network(
-                  chat.getDisplayImage(currentUserId)!,
-                  width: 40,
-                  height: 40,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    final displayName = _getSafeDisplayName(chat, currentUserId);
-                    return Text(
-                      displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    );
-                  },
-                ),
-              )
-            : Text(
-                () {
-                  final displayName = _getSafeDisplayName(chat, currentUserId);
-                  return displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
-                }(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-      ),
-      title: Text(
-        _getSafeDisplayName(chat, currentUserId),
-        style: TextStyle(
-          fontWeight: chat.hasUnreadMessages ? FontWeight.bold : FontWeight.normal,
-        ),
-      ),
-      subtitle: _buildLastMessageRow(chat),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            _formatTime(chat.lastActivity),
-            style: TextStyle(
-              fontSize: 12,
-              color: chat.hasUnreadMessages ? AppColors.primary : Colors.grey[600],
-              fontWeight: chat.hasUnreadMessages ? FontWeight.bold : FontWeight.normal,
-            ),
+        leading: _buildAvatar(displayName, displayImage),
+        title: Text(
+          displayName,
+          style: TextStyle(
+            fontWeight: hasUnreadMessages ? FontWeight.bold : FontWeight.normal,
           ),
-          if (chat.hasUnreadMessages) ...[
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: const BoxDecoration(
-                color: AppColors.primary,
-                shape: BoxShape.circle,
-              ),
-              child: Text(
-                chat.unreadCount.toString(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-      onTap: onTap,
+        ),
+        subtitle: _buildLastMessageRow(chat, hasUnreadMessages),
+        trailing: _buildTrailing(lastActivity, hasUnreadMessages, chat.unreadCount),
+        onTap: onTap,
       ),
     );
   }
 
+  /// Optimized avatar building with caching
+  Widget _buildAvatar(String displayName, String? displayImage) {
+    return CircleAvatar(
+      backgroundColor: AppColors.primary,
+      child: displayImage != null
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: CachedNetworkImage(
+                imageUrl: displayImage,
+                width: 40,
+                height: 40,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Container(
+                  width: 40,
+                  height: 40,
+                  color: Colors.grey[300],
+                  child: const Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                ),
+                errorWidget: (context, url, error) => _buildAvatarText(displayName),
+                fadeInDuration: const Duration(milliseconds: 200),
+                fadeOutDuration: const Duration(milliseconds: 100),
+                memCacheWidth: 80, // Optimize memory usage
+                memCacheHeight: 80,
+              ),
+            )
+          : _buildAvatarText(displayName),
+    );
+  }
+
+  Widget _buildAvatarText(String displayName) {
+    return Text(
+      displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
+      style: const TextStyle(
+        color: Colors.white,
+        fontWeight: FontWeight.bold,
+      ),
+    );
+  }
+
+  /// Optimized trailing section
+  Widget _buildTrailing(DateTime lastActivity, bool hasUnreadMessages, int unreadCount) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(
+          _formatTime(lastActivity),
+          style: TextStyle(
+            fontSize: 12,
+            color: hasUnreadMessages ? AppColors.primary : Colors.grey[600],
+            fontWeight: hasUnreadMessages ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        if (hasUnreadMessages) ...[
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: const BoxDecoration(
+              color: AppColors.primary,
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              unreadCount.toString(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   /// Build last message row with appropriate icon for media messages
-  Widget _buildLastMessageRow(Chat chat) {
+  Widget _buildLastMessageRow(Chat chat, bool hasUnreadMessages) {
     final lastMessage = chat.lastMessage;
     
     if (lastMessage == null) {
@@ -653,8 +759,8 @@ class _ChatListItem extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: chat.hasUnreadMessages ? Colors.black87 : Colors.grey[600],
-          fontWeight: chat.hasUnreadMessages ? FontWeight.w500 : FontWeight.normal,
+          color: hasUnreadMessages ? Colors.black87 : Colors.grey[600],
+          fontWeight: hasUnreadMessages ? FontWeight.w500 : FontWeight.normal,
         ),
       );
     }
@@ -693,7 +799,7 @@ class _ChatListItem extends StatelessWidget {
           Icon(
             messageIcon,
             size: 16,
-            color: chat.hasUnreadMessages ? Colors.black87 : Colors.grey[600],
+            color: hasUnreadMessages ? Colors.black87 : Colors.grey[600],
           ),
           const SizedBox(width: 6),
         ],
@@ -705,8 +811,8 @@ class _ChatListItem extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: chat.hasUnreadMessages ? Colors.black87 : Colors.grey[600],
-              fontWeight: chat.hasUnreadMessages ? FontWeight.w500 : FontWeight.normal,
+              color: hasUnreadMessages ? Colors.black87 : Colors.grey[600],
+              fontWeight: hasUnreadMessages ? FontWeight.w500 : FontWeight.normal,
             ),
           ),
         ),
