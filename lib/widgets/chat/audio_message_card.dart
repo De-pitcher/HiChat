@@ -137,7 +137,11 @@ class _AudioMessageCardState extends State<AudioMessageCard> with TickerProvider
       // Calculate file size if not already available
       await _calculateFileSize();
       
-      // Get the duration of the audio file
+      // FIXED: Set volume to 0 before starting player to prevent audible playback
+      // This prevents the unwanted audio playback when messages load
+      await _audioPlayer!.setVolume(0.0);
+      
+      // Get the duration of the audio file silently
       final duration = await _audioPlayer!.startPlayer(
         fromURI: _audioUrl!,
         whenFinished: () {
@@ -149,13 +153,24 @@ class _AudioMessageCardState extends State<AudioMessageCard> with TickerProvider
       // Stop the player immediately after starting to extract duration
       await _audioPlayer!.stopPlayer();
       
-      // Use a more reliable method to get duration
+      // Restore normal volume for when user actually plays the audio
+      await _audioPlayer!.setVolume(1.0);
+      
+      // Use the duration returned from startPlayer
       if (duration != null && duration.inMilliseconds > 0) {
         setState(() {
           _duration = duration;
         });
+        if (kDebugMode) {
+          print('🎵 Got audio duration silently: ${duration.inSeconds}s');
+        }
       }
     } catch (e) {
+      // Ensure volume is restored even on error
+      try {
+        await _audioPlayer!.setVolume(1.0);
+      } catch (_) {}
+      
       print('🎵 Error extracting duration: $e');
       // Fallback: try to extract from metadata
       final metadata = widget.message.metadata ?? {};

@@ -50,6 +50,9 @@ dependencies:
   # State management with Provider
   provider: ^6.1.1
   
+  # Precise scrolling for chat messages  
+  scrollable_positioned_list: ^0.3.8
+  
   # Country code picker for phone number input
   country_code_picker: ^3.0.0
   
@@ -100,6 +103,12 @@ dependencies:
   
   # Audio recording and playback (mobile platforms only)
   flutter_sound: ^9.2.13
+  
+  # Emoji picker for message input
+  emoji_picker_flutter: ^2.0.0
+  
+  # File picker for document selection
+  file_picker: ^8.0.0
 
 dev_dependencies:
   flutter_test:

@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import '../models/chat.dart';
 import '../models/message.dart';
 import '../models/user.dart';
+import '../models/user_presence.dart';
+import '../models/reply_message.dart';
 import 'chat_websocket_service.dart';
 import 'native_camera_service.dart';
 import 'enhanced_file_upload_service.dart';
@@ -23,9 +25,13 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
   final Map<String, List<Message>> _chatMessages = {};
   final Map<String, Chat> _chats = {};
   final Map<String, User> _users = {};
+  final Map<String, UserPresence> _userPresence = {};
   
   // Chat creation tracking
   final Map<int, Completer<Chat?>> _chatCreationCompleters = {};
+  
+  // Reply state management
+  final Map<String, Message> _replyContext = {}; // chatId -> message being replied to
   
   bool _isInitialized = false;
   bool _isLoading = false;
@@ -41,6 +47,14 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
   String? get currentUserId => _currentUserId;
   String? get errorMessage => _errorMessage;
   bool get hasError => _errorMessage != null;
+  
+  // Presence getters
+  Map<String, UserPresence> get userPresence => Map.unmodifiable(_userPresence);
+  UserPresence? getUserPresence(String userId) => _userPresence[userId];
+  bool isUserOnline(String userId) => _userPresence[userId]?.isOnline ?? false;
+  String getUserStatus(String userId) => _userPresence[userId]?.displayStatus ?? 'Unknown';
+  List<UserPresence> get onlineUsers => _userPresence.values.where((user) => user.isOnline).toList();
+  List<UserPresence> get offlineUsers => _userPresence.values.where((user) => !user.isOnline).toList();
   
   /// Get current user ID with consistent format for UI components
   String getCurrentUserIdForUI() {
@@ -94,6 +108,54 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
     return _chats[chatId];
   }
 
+  /// Get a specific message by ID from a chat
+  Message? getMessageById(String chatId, String messageId) {
+    final messages = _chatMessages[chatId];
+    if (messages == null) return null;
+    
+    try {
+      return messages.firstWhere((message) => message.id == messageId);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ============================================================================
+  // REPLY FUNCTIONALITY
+  // ============================================================================
+
+  /// Set the message being replied to for a specific chat
+  void setReplyContext(String chatId, Message message) {
+    _replyContext[chatId] = message;
+    debugPrint('💬 ChatStateManager: Set reply context for chat $chatId to message ${message.id}');
+    notifyListeners();
+  }
+
+  /// Get the message being replied to for a specific chat
+  Message? getReplyContext(String chatId) {
+    return _replyContext[chatId];
+  }
+
+  /// Clear the reply context for a specific chat
+  void clearReplyContext(String chatId) {
+    if (_replyContext.containsKey(chatId)) {
+      _replyContext.remove(chatId);
+      debugPrint('💬 ChatStateManager: Cleared reply context for chat $chatId');
+      notifyListeners();
+    }
+  }
+
+  /// Check if a chat has an active reply context
+  bool hasReplyContext(String chatId) {
+    return _replyContext.containsKey(chatId);
+  }
+
+  /// Clear all reply contexts (used on logout)
+  void clearAllReplyContexts() {
+    _replyContext.clear();
+    notifyListeners();
+  }
+
   /// Load messages for a specific chat
   Future<void> loadMessagesForChat(String chatId) async {
     if (!_chatWebSocketService.isConnected) {
@@ -116,13 +178,31 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
     required String type,
     int? receiverId,
     String? fileUrl,
+    String? replyToMessageId,
   }) async {
-    debugPrint('🚀 ChatStateManager: sendMessage called - chatId: $chatId, content: $content, type: $type');
+    debugPrint('🚀 ChatStateManager: sendMessage called - chatId: $chatId, content: $content, type: $type, replyTo: $replyToMessageId');
     debugPrint('🚀 ChatStateManager: WebSocket connected: ${_chatWebSocketService.isConnected}');
     
     // Note: Removed connection check to allow queuing when disconnected
 
     try {
+      // Get reply context if replying
+      ReplyMessage? replyToMessage;
+      if (replyToMessageId != null) {
+        final replyMessage = getMessageById(chatId, replyToMessageId);
+        if (replyMessage != null) {
+          replyToMessage = ReplyMessage.fromMessage({
+            'id': replyMessage.id,
+            'content': replyMessage.content,
+            'message_type': replyMessage.type.name,
+            'file_url': replyMessage.fileUrl,
+            'sender_id': replyMessage.senderId,
+            'sender_username': replyMessage.senderUsername ?? 'Unknown',
+            'sender_email': replyMessage.senderEmail ?? '',
+          });
+        }
+      }
+
       // Create optimistic message with a trackable temporary ID
       final tempId = 'optimistic_${_currentUserId ?? 'unknown'}_${DateTime.now().millisecondsSinceEpoch}';
       final message = Message(
@@ -133,10 +213,12 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
         timestamp: DateTime.now(),
         status: MessageStatus.sending,
         type: _parseMessageType(type),
+        replyToMessageId: replyToMessageId,
+        replyToMessage: replyToMessage,
         metadata: fileUrl != null ? {'file_url': fileUrl} : null,
       );
       
-      debugPrint('ChatStateManager: Created optimistic message with ID: $tempId');
+      debugPrint('ChatStateManager: Created optimistic message with ID: $tempId, replyTo: $replyToMessageId');
 
       // Add optimistic message to local state
       _addMessageToChat(chatId, message);
@@ -149,6 +231,7 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
         type: type,
         fileUrl: fileUrl,
         messageId: tempId, // Pass temp ID for enhanced queuing
+        replyToMessageId: replyToMessageId, // Pass reply context
       );
 
       // Update message status based on connection state
@@ -160,6 +243,9 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
         // Message is queued, status will be updated by WebSocket service
         debugPrint('ChatStateManager: Message queued due to disconnection');
       }
+
+      // Clear reply context after sending
+      clearReplyContext(chatId);
       
     } catch (e) {
       debugPrint('ChatStateManager: Failed to send message: $e');
@@ -678,6 +764,7 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
     _chats.clear();
     _chatMessages.clear();
     _users.clear();
+    _replyContext.clear();
     _isInitialized = false;
     _currentUserId = null;
     notifyListeners();
@@ -1062,6 +1149,31 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
     _setError(error);
   }
 
+  @override
+  void onPresenceUpdate(UserPresence presence) {
+    debugPrint('👤 ChatStateManager: Presence update for ${presence.username} - ${presence.isOnline ? 'Online' : 'Offline'}');
+    _userPresence[presence.userId] = presence;
+    notifyListeners();
+  }
+
+  @override
+  void onContactsPresence(List<UserPresence> contacts) {
+    debugPrint('👥 ChatStateManager: Received presence for ${contacts.length} contacts');
+    for (final contact in contacts) {
+      _userPresence[contact.userId] = contact;
+    }
+    notifyListeners();
+  }
+
+  @override
+  void onChatPresence(String chatId, List<UserPresence> members) {
+    debugPrint('💬 ChatStateManager: Chat $chatId presence - ${members.length} members');
+    for (final member in members) {
+      _userPresence[member.userId] = member;
+    }
+    notifyListeners();
+  }
+
   /// Edit a message
   Future<void> editMessage(String messageId, String newContent) async {
     if (!_chatWebSocketService.isConnected) {
@@ -1122,6 +1234,54 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
   void debugTestMessageQueue() {
     debugPrint('🧪 ChatStateManager: Testing message queue functionality');
     // _chatWebSocketService.debugTestQueue();
+  }
+
+  // ============================================================================
+  // PRESENCE METHODS
+  // ============================================================================
+
+  /// Request presence for all contacts
+  void refreshContactsPresence() {
+    if (!_chatWebSocketService.isConnected) {
+      debugPrint('⚠️ ChatStateManager: Cannot refresh contacts presence - not connected');
+      return;
+    }
+    
+    debugPrint('👥 ChatStateManager: Refreshing contacts presence');
+    _chatWebSocketService.getContactsPresence();
+  }
+
+  /// Request presence for a specific user
+  void refreshUserPresence(String userId) {
+    if (!_chatWebSocketService.isConnected) {
+      debugPrint('⚠️ ChatStateManager: Cannot refresh user presence - not connected');
+      return;
+    }
+    
+    debugPrint('👤 ChatStateManager: Refreshing presence for user: $userId');
+    _chatWebSocketService.getUserPresence(userId);
+  }
+
+  /// Request presence for chat members
+  void refreshChatPresence(String chatId) {
+    if (!_chatWebSocketService.isConnected) {
+      debugPrint('⚠️ ChatStateManager: Cannot refresh chat presence - not connected');
+      return;
+    }
+    
+    debugPrint('💬 ChatStateManager: Refreshing presence for chat: $chatId');
+    _chatWebSocketService.getChatPresence(chatId);
+  }
+
+  /// Get online count for specific users
+  int getOnlineCountForUsers(List<String> userIds) {
+    return userIds.where((id) => isUserOnline(id)).length;
+  }
+
+  /// Clear all presence data
+  void clearPresenceData() {
+    _userPresence.clear();
+    notifyListeners();
   }
 
   /// Dispose the state manager

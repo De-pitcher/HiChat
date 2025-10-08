@@ -384,13 +384,63 @@ class ApiService {
     }
   }
 
-  /// Update user profile information
+  /// Update user profile using flexible upsert endpoint
   /// 
   /// Throws [ApiException] on error
   /// Returns [User] on success
-  Future<User> updateUserProfile(String token, ProfileUpdateRequest request) async {
+  Future<User> updateUserProfileUpsert(String token, ProfileUpdateRequest request) async {
     try {
-      final uri = Uri.parse('$_baseUrl/users/profile/');
+      // Use the flexible upsert endpoint: PATCH /api/users/upsert/
+      final uri = Uri.parse('$_baseUrl/users/upsert/');
+      final requestBody = json.encode(request.toJson());
+      
+      // Log request details
+      debugPrint('=== PROFILE UPSERT REQUEST ===');
+      debugPrint('URL: $uri');
+      debugPrint('Method: PATCH');
+      debugPrint('Headers: ${_authHeaders(token)}');
+      debugPrint('Request Body Length: ${requestBody.length} characters');
+      debugPrint('==============================');
+      
+      final response = await _client
+          .patch(
+            uri,
+            headers: _authHeaders(token),
+            body: requestBody,
+          )
+          .timeout(_timeoutDuration);
+
+      return _handleProfileUpdateResponse(response);
+    } on SocketException catch (e) {
+      debugPrint('Socket Exception during profile upsert: $e');
+      throw const NetworkException('No internet connection available');
+    } on HttpException catch (e) {
+      debugPrint('HTTP Exception during profile upsert: $e');
+      throw NetworkException('Network error: ${e.message}');
+    } on FormatException catch (e) {
+      debugPrint('Format Exception during profile upsert: $e');
+      throw ApiException('Invalid response format: ${e.message}');
+    } on ApiException {
+      // Re-throw API exceptions without wrapping them
+      rethrow;
+    } catch (e, stackTrace) {
+      debugPrint('Unexpected error during profile upsert: $e');
+      debugPrint('Stack trace: $stackTrace');
+      throw ApiException('Unexpected error: $e');
+    }
+  }
+
+  /// Update user profile information (Legacy method)
+  /// 
+  /// Throws [ApiException] on error
+  /// Returns [User] on success
+  Future<User> updateUserProfile(String token, ProfileUpdateRequest request, {int? userId}) async {
+    try {
+      // Use the new endpoint format: PUT /api/users/{user_id}/
+      final String endpoint = userId != null 
+          ? '$_baseUrl/users/$userId/' 
+          : '$_baseUrl/users/profile/'; // Fallback to old endpoint
+      final uri = Uri.parse(endpoint);
       final requestBody = json.encode(request.toJson());
       
       // Log request details

@@ -8,6 +8,7 @@ import 'package:web_socket_channel/status.dart' as status;
 import '../models/chat.dart';
 import '../models/message.dart';
 import '../models/user.dart';
+import '../models/user_presence.dart';
 
 /// Represents a queued message waiting to be sent
 class QueuedMessage {
@@ -49,6 +50,9 @@ abstract class ChatEventListener {
   void onMessageDeleted(String chatId, String messageId);
   void onMessagesSeen(List<String> messageIds);
   void onMessagesDelivered(List<String> messageIds);
+  void onPresenceUpdate(UserPresence presence);
+  void onContactsPresence(List<UserPresence> contacts);
+  void onChatPresence(String chatId, List<UserPresence> members);
   void onSummaryUpdated(Chat summary);
   void onChatSummariesReceived(List<Chat> summaries);
   void onAllChatSummariesReceived(List<Chat> summaries);
@@ -379,6 +383,22 @@ class ChatWebSocketService {
           break;
         case 'chat_summary_updated':
           _handleSummaryUpdated(json['chat']);
+          break;
+        case 'contacts_presence':
+          _handleContactsPresence(json);
+          break;
+        case 'presence_update':
+          _handlePresenceUpdate(json);
+          break;
+        case 'user_presence':
+          _handleUserPresence(json);
+          break;
+        case 'chat_presence':
+          _handleChatPresence(json);
+          break;
+        case 'messages_seen':
+        case 'message_seen':
+          _handleMessagesSeen(json);
           break;
         default:
           debugPrint('$_tag: Unknown event type: $eventType');
@@ -769,6 +789,9 @@ class ChatWebSocketService {
             continue;
           }
 
+          // Check for reply_to_message in the original data
+          final replyToMessageData = messageMap['reply_to_message'] as Map<String, dynamic>?;
+          
           // Create a message data map that matches Message.fromJson expectations
           final messageDataForParsing = <String, dynamic>{
             'id': messageId,
@@ -780,6 +803,11 @@ class ChatWebSocketService {
             'timestamp': timestamp,
             'file': file,
           };
+          
+          // Add reply data if it exists
+          if (replyToMessageData != null) {
+            messageDataForParsing['reply_to_message'] = replyToMessageData;
+          }
 
           // Parse the message using the standard fromJson method
           final message = Message.fromJson(messageDataForParsing);
@@ -837,6 +865,9 @@ class ChatWebSocketService {
           readStatus = recipient['read_status']?.toString() ?? 'sent';
         }
         
+        // Check for reply_to_message in new message
+        final replyToMessageData = data['reply_to_message'] as Map<String, dynamic>?;
+        
         // Create a message data map that matches Message.fromJson expectations
         final messageDataForParsing = <String, dynamic>{
           'id': messageId,
@@ -848,6 +879,11 @@ class ChatWebSocketService {
           'timestamp': timestamp,
           'file': file,
         };
+        
+        // Add reply data if it exists
+        if (replyToMessageData != null) {
+          messageDataForParsing['reply_to_message'] = replyToMessageData;
+        }
 
         message = Message.fromJson(messageDataForParsing);
         debugPrint('$_tag: Parsed new message with sender object: ${message.content}');
@@ -1209,6 +1245,126 @@ class ChatWebSocketService {
   }
 
   // ============================================================================
+  // PRESENCE HANDLERS
+  // ============================================================================
+
+  void _handleContactsPresence(Map<String, dynamic> data) {
+    try {
+      final List<dynamic> contactsData = data['contacts'] ?? [];
+      final contacts = contactsData
+          .map((contact) => UserPresence.fromJson(contact as Map<String, dynamic>))
+          .toList();
+      
+      debugPrint('$_tag: Received presence for ${contacts.length} contacts');
+      
+      for (final listener in List<ChatEventListener>.from(_listeners)) {
+        try {
+          listener.onContactsPresence(contacts);
+        } catch (e) {
+          debugPrint('$_tag: Error notifying contacts presence: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('$_tag: Error handling contacts presence: $e');
+      _notifyError('Error updating contacts presence: $e');
+    }
+  }
+
+  void _handlePresenceUpdate(Map<String, dynamic> data) {
+    try {
+      final presenceData = data['presence'] as Map<String, dynamic>?;
+      if (presenceData != null) {
+        final presence = UserPresence.fromJson(presenceData);
+        final status = data['status'] as String?;
+        
+        debugPrint('$_tag: Presence update: ${presence.username} is ${status ?? (presence.isOnline ? 'online' : 'offline')}');
+        
+        for (final listener in List<ChatEventListener>.from(_listeners)) {
+          try {
+            listener.onPresenceUpdate(presence);
+          } catch (e) {
+            debugPrint('$_tag: Error notifying presence update: $e');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('$_tag: Error handling presence update: $e');
+      _notifyError('Error updating presence: $e');
+    }
+  }
+
+  void _handleUserPresence(Map<String, dynamic> data) {
+    try {
+      final presenceData = data['presence'] as Map<String, dynamic>?;
+      if (presenceData != null) {
+        final presence = UserPresence.fromJson(presenceData);
+        debugPrint('$_tag: User presence: ${presence.username} - ${presence.displayStatus}');
+        
+        for (final listener in List<ChatEventListener>.from(_listeners)) {
+          try {
+            listener.onPresenceUpdate(presence);
+          } catch (e) {
+            debugPrint('$_tag: Error notifying user presence: $e');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('$_tag: Error handling user presence: $e');
+      _notifyError('Error updating user presence: $e');
+    }
+  }
+
+  void _handleChatPresence(Map<String, dynamic> data) {
+    try {
+      final List<dynamic> membersData = data['members'] ?? [];
+      final members = membersData
+          .map((member) => UserPresence.fromJson(member as Map<String, dynamic>))
+          .toList();
+      
+      final chatId = data['chat_id']?.toString() ?? '';
+      debugPrint('$_tag: Chat $chatId presence: ${members.length} members');
+      
+      for (final listener in List<ChatEventListener>.from(_listeners)) {
+        try {
+          listener.onChatPresence(chatId, members);
+        } catch (e) {
+          debugPrint('$_tag: Error notifying chat presence: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('$_tag: Error handling chat presence: $e');
+      _notifyError('Error updating chat presence: $e');
+    }
+  }
+
+  void _handleMessagesSeen(Map<String, dynamic> data) {
+    try {
+      final List<dynamic>? messageIds = data['message_ids'];
+      final String? chatId = data['chat_id']?.toString();
+      
+      if (messageIds == null || chatId == null) {
+        debugPrint('$_tag: Invalid messages seen data: missing message_ids or chat_id');
+        return;
+      }
+
+      final List<String> seenMessageIds = messageIds.map((id) => id.toString()).toList();
+      debugPrint('$_tag: Messages marked as seen in chat $chatId: ${seenMessageIds.length} messages');
+      
+      // Notify listeners to update message status to read
+      for (final listener in List<ChatEventListener>.from(_listeners)) {
+        try {
+          listener.onMessagesSeen(seenMessageIds);
+        } catch (e) {
+          debugPrint('$_tag: Error notifying messages seen: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('$_tag: Error handling messages seen: $e');
+      _notifyError('Error processing read receipts: $e');
+    }
+  }
+
+  // ============================================================================
   // PUBLIC API METHODS
   // ============================================================================
 
@@ -1263,8 +1419,9 @@ class ChatWebSocketService {
     required String type,
     String? fileUrl,
     String? messageId, // Optional message ID for tracking
+    String? replyToMessageId, // Reply to message ID
   }) {
-    debugPrint('$_tag: 🚀 sendMessage called - ChatID: $chatId, Type: $type, ProvidedID: $messageId, Content: ${content.length > 50 ? content.substring(0, 50) + '...' : content}');
+    debugPrint('$_tag: 🚀 sendMessage called - ChatID: $chatId, Type: $type, ProvidedID: $messageId, ReplyTo: $replyToMessageId, Content: ${content.length > 50 ? content.substring(0, 50) + '...' : content}');
     
     // Generate temporary ID if not provided
     final tempId = messageId ?? 'temp_${DateTime.now().millisecondsSinceEpoch}_${math.Random().nextInt(1000)}';
@@ -1282,6 +1439,11 @@ class ChatWebSocketService {
     if (fileUrl != null) {
       payload['file_url'] = fileUrl;
       debugPrint('$_tag: 📎 Including file URL: $fileUrl');
+    }
+    
+    if (replyToMessageId != null) {
+      payload['reply_to_message_id'] = replyToMessageId;
+      debugPrint('$_tag: 💬 Including reply to message ID: $replyToMessageId');
     }
     
     debugPrint('$_tag: 📤 Calling _sendJson with messageId: $tempId, chatId: $chatId');
@@ -1411,5 +1573,34 @@ class ChatWebSocketService {
     }
   }
 
+  // ============================================================================
+  // PRESENCE API METHODS
+  // ============================================================================
+
+  /// Get presence for a specific user
+  void getUserPresence(String userId) {
+    debugPrint('$_tag: Getting user presence: $userId');
+    _sendJson({
+      'action': 'get_presence',
+      'user_id': userId,
+    });
+  }
+
+  /// Get presence for all contacts
+  void getContactsPresence() {
+    debugPrint('$_tag: Getting contacts presence');
+    _sendJson({
+      'action': 'get_contacts_presence',
+    });
+  }
+
+  /// Get presence for chat members
+  void getChatPresence(String chatId) {
+    debugPrint('$_tag: Getting chat presence: $chatId');
+    _sendJson({
+      'action': 'get_chat_presence',
+      'chat_id': chatId,
+    });
+  }
 
 }

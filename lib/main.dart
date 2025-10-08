@@ -18,6 +18,8 @@ import 'screens/chat/chat_screen.dart';
 import 'screens/camera/camera_screen.dart';
 import 'screens/location/location_sharing_screen.dart';
 import 'screens/user/user_search_screen.dart';
+import 'screens/profile/profile_screen.dart';
+import 'screens/chat/chat_info_screen.dart';
 import 'models/chat.dart';
 import 'utils/page_transitions.dart';
 
@@ -117,6 +119,19 @@ class HiChatApp extends StatelessWidget {
             case '/user-search':
               return PageTransitions.slideFromRight(
                 const UserSearchScreen(),
+                settings: settings,
+              );
+
+            case '/profile':
+              return PageTransitions.slideFromRight(
+                const ProfileScreen(),
+                settings: settings,
+              );
+
+            case '/chat-info':
+              final chat = settings.arguments as Chat;
+              return PageTransitions.slideFromRight(
+                ChatInfoScreen(chat: chat),
                 settings: settings,
               );
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:hichat_app/constants/app_constants.dart';
 import 'package:provider/provider.dart';
@@ -8,22 +9,44 @@ import '../../models/message.dart';
 import '../../constants/app_theme.dart';
 import '../../services/auth_state_manager.dart';
 import '../../services/chat_state_manager.dart';
+import '../../widgets/online_indicator.dart';
 
-/// Optimized state class for chat list to reduce rebuilds
+/// Connection status enum for better state management
+enum ConnectionStatus {
+  connected,
+  connecting,
+  disconnected,
+  reconnecting,
+  failed,
+}
+
+/// Enhanced state class for chat list with better error handling
 class ChatListState {
   final List<Chat> chats;
   final bool isLoading;
   final bool hasError;
   final String? errorMessage;
-  final bool isConnected;
+  final ConnectionStatus connectionStatus;
+  final int reconnectAttempts;
+  final DateTime? lastConnected;
+  final bool showConnectionIndicator;
 
   const ChatListState({
     required this.chats,
     required this.isLoading,
     required this.hasError,
     required this.errorMessage,
-    required this.isConnected,
+    required this.connectionStatus,
+    this.reconnectAttempts = 0,
+    this.lastConnected,
+    this.showConnectionIndicator = false,
   });
+  
+  bool get isConnected => connectionStatus == ConnectionStatus.connected;
+  bool get isReconnecting => connectionStatus == ConnectionStatus.reconnecting;
+  bool get isConnecting => connectionStatus == ConnectionStatus.connecting;
+  bool get hasConnectionIssues => connectionStatus == ConnectionStatus.failed || 
+                                  connectionStatus == ConnectionStatus.disconnected;
 
   @override
   bool operator ==(Object other) {
@@ -33,7 +56,9 @@ class ChatListState {
         other.isLoading == isLoading &&
         other.hasError == hasError &&
         other.errorMessage == errorMessage &&
-        other.isConnected == isConnected &&
+        other.connectionStatus == connectionStatus &&
+        other.reconnectAttempts == reconnectAttempts &&
+        other.showConnectionIndicator == showConnectionIndicator &&
         _listsEqual(other.chats, chats);
   }
 
@@ -44,7 +69,31 @@ class ChatListState {
       isLoading,
       hasError,
       errorMessage,
-      isConnected,
+      connectionStatus,
+      reconnectAttempts,
+      showConnectionIndicator,
+    );
+  }
+
+  ChatListState copyWith({
+    List<Chat>? chats,
+    bool? isLoading,
+    bool? hasError,
+    String? errorMessage,
+    ConnectionStatus? connectionStatus,
+    int? reconnectAttempts,
+    DateTime? lastConnected,
+    bool? showConnectionIndicator,
+  }) {
+    return ChatListState(
+      chats: chats ?? this.chats,
+      isLoading: isLoading ?? this.isLoading,
+      hasError: hasError ?? this.hasError,
+      errorMessage: errorMessage ?? this.errorMessage,
+      connectionStatus: connectionStatus ?? this.connectionStatus,
+      reconnectAttempts: reconnectAttempts ?? this.reconnectAttempts,
+      lastConnected: lastConnected ?? this.lastConnected,
+      showConnectionIndicator: showConnectionIndicator ?? this.showConnectionIndicator,
     );
   }
 
@@ -68,21 +117,65 @@ class ChatListScreen extends StatefulWidget {
 
 class _ChatListScreenState extends State<ChatListScreen> {
   late final ScrollController _scrollController;
+  late final TextEditingController _searchController;
+  bool _isSearching = false;
+  String _searchQuery = '';
+  
+  // Simple error debouncing
+  Timer? _errorDisplayTimer;
+  String? _lastDisplayedError;
+  
+
   
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
+    _searchController = TextEditingController();
     // ChatStateManager is automatically initialized via AuthStateManager
     // No need to manually load chats here
+    
+
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
+    _searchController.dispose();
+    _errorDisplayTimer?.cancel();
     super.dispose();
   }
   
+  List<Chat> _filterChats(List<Chat> chats) {
+    if (_searchQuery.isEmpty) {
+      return chats;
+    }
+    
+    return chats.where((chat) {
+      // Search in chat name
+      final chatName = _getChatName(chat).toLowerCase();
+      if (chatName.contains(_searchQuery)) {
+        return true;
+      }
+      
+      // Search in last message content
+      if (chat.lastMessage != null) {
+        final lastMessageContent = chat.lastMessage!.content.toLowerCase();
+        if (lastMessageContent.contains(_searchQuery)) {
+          return true;
+        }
+      }
+      
+      return false;
+    }).toList();
+  }
+
+  String _getChatName(Chat chat) {
+    final authManager = context.read<AuthStateManager>();
+    final currentUserId = authManager.currentUser?.id;
+    return chat.getDisplayName(currentUserId);
+  }
+
   Future<void> _refreshChats() async {
     final chatStateManager = context.read<ChatStateManager>();
     
@@ -358,6 +451,52 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
+  Widget _buildNoSearchResults() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // No results illustration
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.search_off,
+                size: 64,
+                color: Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 24),
+            
+            // No results title
+            Text(
+              'No chats found',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 8),
+            
+            // No results description
+            Text(
+              'Try a different search term or check your spelling',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildErrorBanner(String errorMessage, ChatStateManager chatStateManager) {
     return Container(
       width: double.infinity,
@@ -468,7 +607,23 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('HiChat'),
+        title: _isSearching 
+          ? TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: 'Search chats...',
+                border: InputBorder.none,
+                hintStyle: TextStyle(color: Colors.white54),
+              ),
+              style: const TextStyle(color: Colors.white),
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value.toLowerCase();
+                });
+              },
+            )
+          : const Text('HiChat'),
         actions: [
           IconButton(
             icon: const Icon(Icons.camera_alt),
@@ -491,16 +646,22 @@ class _ChatListScreenState extends State<ChatListScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.search),
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
             onPressed: () {
-              // TODO: Implement search functionality
+              setState(() {
+                _isSearching = !_isSearching;
+                if (!_isSearching) {
+                  _searchController.clear();
+                  _searchQuery = '';
+                }
+              });
             },
           ),
           PopupMenuButton<String>(
             onSelected: (value) {
               switch (value) {
                 case 'profile':
-                  // TODO: Navigate to profile screen
+                  Navigator.pushNamed(context, '/profile');
                   break;
                 case 'settings':
                   // TODO: Navigate to settings screen
@@ -527,36 +688,29 @@ class _ChatListScreenState extends State<ChatListScreen> {
           ),
         ],
       ),
-      body: Selector<ChatStateManager, ChatListState>(
-        selector: (context, chatManager) => ChatListState(
-          chats: chatManager.chats,
-          isLoading: chatManager.isLoading,
-          hasError: chatManager.hasError,
-          errorMessage: chatManager.errorMessage,
-          isConnected: chatManager.isConnected,
-        ),
-        builder: (context, state, child) {
-          final chats = state.chats;
-          final isLoading = state.isLoading;
-          final hasError = state.hasError;
-          final errorMessage = state.errorMessage;
-          
-          // Get ChatStateManager for method calls (but not for rebuilds)
-          final chatStateManager = context.read<ChatStateManager>();
+      body: Consumer<ChatStateManager>(
+        builder: (context, chatManager, child) {
+          final chats = _filterChats(chatManager.chats);
+          final isLoading = chatManager.isLoading;
+          final hasError = chatManager.hasError;
+          final errorMessage = chatManager.errorMessage;
           
           // Show shimmer loading effect
           if (isLoading && chats.isEmpty) {
             return _buildShimmerLoading();
           }
           
-          // Show error state with retry option
-          if (hasError && chats.isEmpty) {
-            return _buildErrorState(errorMessage!, chatStateManager);
+          // Show error state with retry option (with debouncing)
+          if (hasError && _shouldDisplayError(errorMessage) && chats.isEmpty) {
+            return _buildErrorState(errorMessage!, chatManager);
           }
           
           // Show empty state
           if (chats.isEmpty && !isLoading) {
-            return _buildEmptyState(state.isConnected);
+            if (_isSearching && _searchQuery.isNotEmpty) {
+              return _buildNoSearchResults();
+            }
+            return _buildEmptyState(chatManager.isConnected);
           }
           
           // Show chat list with pull-to-refresh
@@ -575,9 +729,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     ),
                   ),
                 
-                // Show error banner if there's an error but we have cached chats
-                if (hasError && chats.isNotEmpty)
-                  _buildErrorBanner(errorMessage!, chatStateManager),
+                // Show error banner if there's an error but we have cached chats (with debouncing)
+                if (hasError && _shouldDisplayError(errorMessage) && chats.isNotEmpty)
+                  _buildErrorBanner(errorMessage!, chatManager),
                 
                 // Chat list - optimized with performance improvements
                 Expanded(
@@ -617,6 +771,36 @@ class _ChatListScreenState extends State<ChatListScreen> {
       ),
     );
   }
+
+  /// Check if we should display an error message with debouncing
+  bool _shouldDisplayError(String? errorMessage) {
+    if (errorMessage == null) {
+      // Clear state when there's no error
+      _lastDisplayedError = null;
+      _errorDisplayTimer?.cancel();
+      return false;
+    }
+    
+    // If this is a new error, start debouncing
+    if (_lastDisplayedError != errorMessage) {
+      _lastDisplayedError = errorMessage;
+      _errorDisplayTimer?.cancel();
+      
+      // Only show error after a delay to prevent flickering during reconnection
+      _errorDisplayTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() {
+            // Trigger rebuild to show the error
+          });
+        }
+      });
+      
+      return false; // Don't show immediately
+    }
+    
+    // Show error if the timer has completed and we're still in error state
+    return _errorDisplayTimer?.isActive != true;
+  }
 }
 
 class _OptimizedChatListItem extends StatelessWidget {
@@ -654,22 +838,39 @@ class _OptimizedChatListItem extends StatelessWidget {
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: _buildAvatar(displayName, displayImage),
+        leading: _buildAvatar(displayName, displayImage, currentUserId),
         title: Text(
           displayName,
           style: TextStyle(
             fontWeight: hasUnreadMessages ? FontWeight.bold : FontWeight.normal,
           ),
         ),
-        subtitle: _buildLastMessageRow(chat, hasUnreadMessages),
+        subtitle: _buildLastMessageRow(chat, hasUnreadMessages, currentUserId),
         trailing: _buildTrailing(lastActivity, hasUnreadMessages, chat.unreadCount),
         onTap: onTap,
       ),
     );
   }
 
-  /// Optimized avatar building with caching
-  Widget _buildAvatar(String displayName, String? displayImage) {
+  /// Optimized avatar building with presence awareness
+  Widget _buildAvatar(String displayName, String? displayImage, String currentUserId) {
+    // For direct chats, show presence-aware avatar
+    if (chat.isDirectChat) {
+      final otherUserId = chat.getOtherUserId(currentUserId);
+      if (otherUserId != null) {
+        return PresenceAwareAvatar(
+          userId: otherUserId,
+          imageUrl: displayImage,
+          displayName: displayName,
+          radius: 20.0,
+          showIndicator: true,
+          showPulse: true,
+          backgroundColor: AppColors.primary,
+        );
+      }
+    }
+    
+    // Fallback to regular avatar for group chats or when other user not found
     return CircleAvatar(
       backgroundColor: AppColors.primary,
       child: displayImage != null
@@ -750,9 +951,54 @@ class _OptimizedChatListItem extends StatelessWidget {
   }
 
   /// Build last message row with appropriate icon for media messages
-  Widget _buildLastMessageRow(Chat chat, bool hasUnreadMessages) {
-    final lastMessage = chat.lastMessage;
-    
+  Widget _buildLastMessageRow(Chat chat, bool hasUnreadMessages, String currentUserId) {
+    return Consumer<ChatStateManager>(
+      builder: (context, chatManager, child) {
+        final lastMessage = chat.lastMessage;
+        
+        // For direct chats, show presence status if user is online
+        if (chat.isDirectChat) {
+          final otherUserId = chat.getOtherUserId(currentUserId);
+          if (otherUserId != null) {
+            final isOnline = chatManager.isUserOnline(otherUserId);
+            
+            // If user is online, show "online" status
+            if (isOnline) {
+              return Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.green,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'online',
+                    style: TextStyle(
+                      color: Colors.green,
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              );
+            }
+            
+            // For offline users, just show the regular message content
+            // The presence indicator on the avatar is sufficient
+          }
+        }
+        
+        // Default: show last message
+        return _buildMessageContent(lastMessage, hasUnreadMessages);
+      },
+    );
+  }
+
+  Widget _buildMessageContent(Message? lastMessage, bool hasUnreadMessages) {
     if (lastMessage == null) {
       return Text(
         'No messages yet',
@@ -845,4 +1091,6 @@ class _OptimizedChatListItem extends StatelessWidget {
       return 'now';
     }
   }
+
+
 }

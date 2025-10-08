@@ -87,6 +87,29 @@ class Chat {
     }
   }
 
+  // Get the other user's ID in a direct chat
+  String? getOtherUserId(dynamic currentUserId) {
+    if (!isDirectChat) return null;
+    
+    // Try to get from participants first
+    final otherUser = getOtherUser(currentUserId);
+    if (otherUser != null) return otherUser.id.toString();
+    
+    // Fallback: try to get from participantIds
+    if (participantIds.isNotEmpty) {
+      try {
+        return participantIds.firstWhere(
+          (userId) => userId != currentUserId.toString(),
+        );
+      } catch (e) {
+        // If no other user ID found, return null
+        return null;
+      }
+    }
+    
+    return null;
+  }
+
   // Get display name for the chat
   String getDisplayName(dynamic currentUserId) {
     if (isGroupChat) return name;

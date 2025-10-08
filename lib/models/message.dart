@@ -1,3 +1,5 @@
+import 'reply_message.dart';
+
 enum MessageType {
   text,
   image,
@@ -24,6 +26,7 @@ class Message {
   final MessageStatus status;
   final DateTime timestamp;
   final String? replyToMessageId;
+  final ReplyMessage? replyToMessage;
   final Map<String, dynamic>? metadata; // For file info, image dimensions, etc.
 
   const Message({
@@ -35,6 +38,7 @@ class Message {
     this.status = MessageStatus.sent,
     required this.timestamp,
     this.replyToMessageId,
+    this.replyToMessage,
     this.metadata,
   });
 
@@ -47,6 +51,7 @@ class Message {
     MessageStatus? status,
     DateTime? timestamp,
     String? replyToMessageId,
+    ReplyMessage? replyToMessage,
     Map<String, dynamic>? metadata,
   }) {
     return Message(
@@ -58,6 +63,7 @@ class Message {
       status: status ?? this.status,
       timestamp: timestamp ?? this.timestamp,
       replyToMessageId: replyToMessageId ?? this.replyToMessageId,
+      replyToMessage: replyToMessage ?? this.replyToMessage,
       metadata: metadata ?? this.metadata,
     );
   }
@@ -73,6 +79,7 @@ class Message {
   bool get isSent => status == MessageStatus.sent;
   bool get isSending => status == MessageStatus.sending;
   bool get isFailed => status == MessageStatus.failed;
+  bool get isReply => replyToMessage != null || replyToMessageId != null;
 
   // Convenience getters for metadata
   String? get fileUrl => metadata?['file_url']?.toString();
@@ -91,11 +98,14 @@ class Message {
       'status': status.name,
       'timestamp': timestamp.millisecondsSinceEpoch,
       'replyToMessageId': replyToMessageId,
+      'replyToMessage': replyToMessage?.toJson(),
       'metadata': metadata,
     };
   }
 
   factory Message.fromJson(Map<String, dynamic> json) {
+    final messageId = (json['id'] ?? json['message_id'])?.toString() ?? '';
+    
     // Handle sender information
     Map<String, dynamic>? senderData;
     if (json['sender'] != null) {
@@ -106,6 +116,19 @@ class Message {
     String? fileUrl;
     if (json['file'] != null) {
       fileUrl = json['file'].toString();
+    }
+
+    // Handle reply to message
+    ReplyMessage? replyToMessage;
+    final replyData = json['reply_to_message'] as Map<String, dynamic>?;
+    
+    if (replyData != null) {
+      try {
+        replyToMessage = ReplyMessage.fromJson(replyData);
+      } catch (e) {
+        // If ReplyMessage.fromJson fails, try creating from basic message data
+        replyToMessage = ReplyMessage.fromMessage(replyData);
+      }
     }
 
     // Create metadata with file info if available
@@ -120,17 +143,22 @@ class Message {
       }
     }
 
-    return Message(
-      id: (json['id'] ?? json['message_id'])?.toString() ?? '',
+    final replyToMessageId = (json['replyToMessageId'] ?? json['reply_to_message_id'])?.toString();
+    
+    final message = Message(
+      id: messageId,
       chatId: (json['chatId'] ?? json['chat_id'])?.toString() ?? '',
       senderId: (json['senderId'] ?? json['sender_id'] ?? senderData?['id'])?.toString() ?? '',
       content: json['content']?.toString() ?? '',
       type: _parseMessageType(json['type'] ?? json['message_type']),
       status: _parseMessageStatus(json['status'] ?? json['read_status']),
       timestamp: _parseTimestamp(json['timestamp'] ?? json['created_at']),
-      replyToMessageId: (json['replyToMessageId'] ?? json['reply_to_message_id'])?.toString(),
+      replyToMessageId: replyToMessageId,
+      replyToMessage: replyToMessage,
       metadata: metadata,
     );
+    
+    return message;
   }
 
   static MessageType _parseMessageType(dynamic type) {
