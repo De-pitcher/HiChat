@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/message.dart';
 import 'chat_cache_service.dart';
-import 'chat_websocket_service.dart';
 
 /// Message preloading and pagination service for smooth chat experience
 /// 
@@ -16,7 +15,7 @@ import 'chat_websocket_service.dart';
 class MessagePreloadingService extends ChangeNotifier {
   final String chatId;
   final ChatCacheService _cacheService = ChatCacheService.instance;
-  final ChatWebSocketService _webSocketService = ChatWebSocketService.instance;
+
 
   MessagePreloadingService({required this.chatId});
 
@@ -33,7 +32,6 @@ class MessagePreloadingService extends ChangeNotifier {
   bool _hasMoreMessages = true;
   bool _isInitialized = false;
   int _currentPage = 0;
-  String? _lastMessageId;
   Timer? _preloadTimer;
 
   // Getters
@@ -84,10 +82,6 @@ class MessagePreloadingService extends ChangeNotifier {
         // Update state
         _currentPage = (cachedMessages.length / messagesPerPage).ceil();
         _loadedPages.addAll(List.generate(_currentPage, (index) => index));
-        
-        if (cachedMessages.isNotEmpty) {
-          _lastMessageId = cachedMessages.last.id;
-        }
 
         debugPrint('📦 Loaded ${cachedMessages.length} cached messages');
         notifyListeners();
@@ -121,7 +115,6 @@ class MessagePreloadingService extends ChangeNotifier {
         
         _currentPage = 1;
         _loadedPages.add(0);
-        _lastMessageId = messages.isNotEmpty ? messages.last.id : null;
 
         // Cache the messages
         await _cacheService.cacheMessages(chatId, _allMessages);
@@ -302,7 +295,6 @@ class MessagePreloadingService extends ChangeNotifier {
       _loadedPages.clear();
       _currentPage = 0;
       _hasMoreMessages = true;
-      _lastMessageId = null;
       
       await loadInitialMessages();
       
@@ -378,7 +370,6 @@ class MessagePreloadingService extends ChangeNotifier {
     _loadedPages.clear();
     _currentPage = 0;
     _hasMoreMessages = true;
-    _lastMessageId = null;
     _isInitialized = false;
     
     notifyListeners();

@@ -215,35 +215,6 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  void _handleScrollEvent() {
-    if (!_itemScrollController.isAttached) return;
-
-    final positions = _itemPositionsListener.itemPositions.value;
-    if (positions.isEmpty) return;
-
-    // Get current position info
-    final maxVisibleIndex = positions
-        .map((p) => p.index)
-        .reduce((a, b) => a > b ? a : b);
-    final chatStateManager = context.read<ChatStateManager>();
-    final messages = chatStateManager.getMessagesForChat(widget.chat.id);
-
-    if (messages.isNotEmpty) {
-      final groupedItems = _getGroupedMessages(messages);
-      final totalItems = groupedItems.length;
-      final isAtBottom = maxVisibleIndex >= (totalItems - 1);
-      final isNearBottom = maxVisibleIndex >= (totalItems - 3);
-
-      // Show FAB only if user scrolled up and not too close to bottom
-      if (!isAtBottom && !isNearBottom && !_showScrollToBottomFab) {
-        setState(() {
-          _showScrollToBottomFab = true;
-        });
-        _setupFabHideTimer();
-        debugPrint('📍 Showing FAB due to scroll event with 5-second timer');
-      }
-    }
-  }
 
   /// Check if auto-scroll should happen (avoid interfering with recent manual scrolls)
   bool _shouldAutoScroll() {

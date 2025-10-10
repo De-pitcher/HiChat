@@ -761,13 +761,44 @@ class _ChatListScreenState extends State<ChatListScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.of(context).pushNamed('/user-search');
-        },
-        heroTag: "new_chat_fab",
-        elevation: 6,
-        child: const Icon(Icons.add),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          // Calls FAB
+          FloatingActionButton(
+            onPressed: () {
+              Navigator.of(context).pushNamed('/calls');
+            },
+            heroTag: "calls_fab",
+            backgroundColor: Colors.green.withValues(alpha: 0.9),
+            elevation: 4,
+            child: const Icon(Icons.call, color: Colors.white),
+          ),
+          const SizedBox(height: 16),
+          
+          // Contacts FAB
+          FloatingActionButton(
+            onPressed: () {
+              Navigator.of(context).pushNamed('/contacts');
+            },
+            heroTag: "contacts_fab",
+            backgroundColor: AppColors.primary.withValues(alpha: 0.9),
+            elevation: 4,
+            child: const Icon(Icons.contacts, color: Colors.white),
+          ),
+          const SizedBox(height: 16),
+          
+          // Add new chat FAB
+          FloatingActionButton(
+            onPressed: () {
+              Navigator.of(context).pushNamed('/user-search');
+            },
+            heroTag: "new_chat_fab",
+            backgroundColor: AppColors.primary,
+            elevation: 6,
+            child: const Icon(Icons.add, color: Colors.white),
+          ),
+        ],
       ),
     );
   }

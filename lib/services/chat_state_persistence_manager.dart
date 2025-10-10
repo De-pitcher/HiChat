@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../models/message.dart';
-import '../models/chat.dart';
+
 import 'chat_cache_service.dart';
 import 'enhanced_chat_scroll_controller.dart';
 import 'message_preloading_service.dart';

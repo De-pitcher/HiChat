@@ -95,6 +95,13 @@ dependencies:
   # Permission handler for runtime permissions
   permission_handler: ^11.1.0
   
+  # Flutter contacts for accessing device contacts (modern alternative)
+  flutter_contacts: ^1.1.7+1
+  
+  # Call logs and phone functionality
+  call_log: ^6.0.1
+  url_launcher: ^6.2.4
+  
   # Shimmer effect for loading states
   shimmer: ^3.0.0
   
