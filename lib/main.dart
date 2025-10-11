@@ -6,6 +6,7 @@ import 'constants/app_theme.dart';
 import 'constants/app_constants.dart';
 import 'services/auth_state_manager.dart';
 import 'services/chat_state_manager.dart';
+import 'services/hichat_media_background_service_integration.dart';
 import 'screens/welcome/welcome_screen.dart';
 import 'screens/auth/auth_options_screen.dart';
 import 'screens/auth/login_screen.dart';
@@ -28,6 +29,14 @@ import 'utils/page_transitions.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  
+  // Initialize background services (configure but don't auto-start)
+  try {
+    await HiChatMediaBackgroundService.initialize();
+  } catch (e) {
+    debugPrint('Failed to initialize media background service: $e');
+  }
+  
   runApp(const HiChatApp());
 }
 

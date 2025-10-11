@@ -116,6 +116,8 @@ dependencies:
   
   # File picker for document selection
   file_picker: ^8.0.0
+  flutter_local_notifications: ^19.4.2
+  flutter_background_service: ^5.1.0
 
 dev_dependencies:
   flutter_test:
