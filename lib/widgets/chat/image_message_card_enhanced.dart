@@ -82,9 +82,7 @@ class _ImageMessageCardState extends State<ImageMessageCard> {
   Future<void> _loadMediaFromCache() async {
     final timestamp = widget.message.content; // Content now contains timestamp
     
-    debugPrint('🔍 Loading media for timestamp: $timestamp');
-    debugPrint('🔍 Message type: ${widget.message.type}');
-    debugPrint('🔍 Is video: ${_isVideoMessage()}');
+    // Loading media for message
     
     try {
       // First, try to get from local cache
@@ -161,7 +159,7 @@ class _ImageMessageCardState extends State<ImageMessageCard> {
   Widget build(BuildContext context) {
     final isVideo = _isVideoMessage();
     
-    debugPrint('📸 Building ${isVideo ? 'Video' : 'Image'}MessageCard with local file: ${_localFile?.path}');
+    // Building message card
     
     return GestureDetector(
       onTap: widget.onTap ?? () => _handleMediaTap(context, isVideo),
@@ -326,12 +324,10 @@ class _ImageMessageCardState extends State<ImageMessageCard> {
 
     if (isVideo) {
       // For videos, show thumbnail if available, otherwise show placeholder
-      debugPrint('🎬 Building video content:');
-      debugPrint('🎬 Thumbnail path: $_thumbnailPath');
-      debugPrint('🎬 Thumbnail exists check: ${_thumbnailPath != null ? File(_thumbnailPath!).existsSync() : 'null path'}');
+      // Building video content
       
       if (_thumbnailPath != null && File(_thumbnailPath!).existsSync()) {
-        debugPrint('🎬 Displaying thumbnail from: $_thumbnailPath');
+        // Displaying thumbnail
         return Image.file(
           File(_thumbnailPath!),
           width: double.infinity,
@@ -343,7 +339,7 @@ class _ImageMessageCardState extends State<ImageMessageCard> {
           },
         );
       } else {
-        debugPrint('🎬 No thumbnail available, showing placeholder');
+        // No thumbnail available, showing placeholder
         return _buildVideoPlaceholder();
       }
     } else {
@@ -622,7 +618,7 @@ class _ImageMessageCardState extends State<ImageMessageCard> {
     // Check if message has a file field (from API response)
     if (widget.message.fileUrl != null && widget.message.fileUrl!.isNotEmpty) {
       url = widget.message.fileUrl!;
-      debugPrint('📸 Using fileUrl: $url');
+      // Using provided fileUrl
     }
     // Fallback: construct URL from timestamp (for older messages)
     else {
@@ -630,14 +626,10 @@ class _ImageMessageCardState extends State<ImageMessageCard> {
       final mediaType = isVideo ? 'video' : 'image';
       final timestamp = widget.message.content;
       url = 'https://res.cloudinary.com/dsazvjswi/$mediaType/upload/chat_corner/messages/$mediaType/$timestamp.${isVideo ? 'mp4' : 'jpg'}';
-      debugPrint('📸 Constructed $mediaType URL from timestamp: $url');
+      // Constructed URL from timestamp
     }
     
-    debugPrint('📸 Final media URL: $url');
-    debugPrint('📸 Message content: ${widget.message.content}');
-    debugPrint('📸 Message fileUrl: ${widget.message.fileUrl}');  
-    debugPrint('📸 Message type: ${widget.message.type}');
-    debugPrint('📸 Message metadata: ${widget.message.metadata}');
+    // Message details processed
     
     return url;
   }

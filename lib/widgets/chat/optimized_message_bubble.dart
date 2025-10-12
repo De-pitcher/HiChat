@@ -591,7 +591,7 @@ class OptimizedMessageBubble extends StatelessWidget {
   }
 
   void _replyToMessage(BuildContext context, Message message) {
-    debugPrint('🎯 Reply button tapped for message: ${message.id}');
+    // Reply button tapped
     // Use the onReply callback directly instead of finding ancestor state
     if (onReply != null) {
       debugPrint('📞 Calling onReply callback');
@@ -688,7 +688,7 @@ class OptimizedMessageBubble extends StatelessWidget {
         final CachedNetworkImageProvider imageProvider =
             CachedNetworkImageProvider(fileUrl);
         await imageProvider.evict();
-        debugPrint('🖼️ Cleared image cache for: ${message.id}');
+        // Image cache cleared
       }
 
       // For locally cached media (audio, video, images), use LocalMediaCacheService
@@ -708,7 +708,7 @@ class OptimizedMessageBubble extends StatelessWidget {
               final cachedFile = File(metadata.localPath);
               if (await cachedFile.exists()) {
                 await cachedFile.delete();
-                debugPrint('🗑️ Deleted cached file: ${metadata.localPath}');
+                // Cached file deleted
               }
 
               // Delete thumbnail if it exists (for videos)
@@ -762,7 +762,7 @@ class OptimizedMessageBubble extends StatelessWidget {
       ),
       child: GestureDetector(
         onTap: () {
-          debugPrint('🎯 Tapped reply context - scrolling to message: $scrollToId');
+          // Scrolling to replied message
           onScrollToMessage?.call(scrollToId);
         },
         child: Container(

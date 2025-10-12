@@ -29,7 +29,6 @@ class _CallsScreenState extends State<CallsScreen>
 
   // Cache for efficient filtering and sorting
   List<CallLogEntry>? _allCallLogsCache;
-  DateTime? _lastLoadTime;
 
   @override
   void initState() {
@@ -189,14 +188,6 @@ class _CallsScreenState extends State<CallsScreen>
           _isLoadingMore = false;
         });
       }
-    }
-  }
-
-  // Memory optimization: Clear cache when not needed
-  void _clearCacheIfNeeded() {
-    if (_allCallLogsCache != null && _allCallLogsCache!.length > 1000) {
-      debugPrint('🧹 Clearing call log cache to free memory');
-      _allCallLogsCache = null;
     }
   }
 

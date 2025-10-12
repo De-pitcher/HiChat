@@ -103,7 +103,7 @@ class _ImageMessageCardState extends State<ImageMessageCard> {
   Widget build(BuildContext context) {
     final isVideo = _isVideoMessage();
     
-    debugPrint('📸 Building ${isVideo ? 'Video' : 'Image'}MessageCard with local file: ${_localFile?.path}');
+    // Building message card
     
     return GestureDetector(
       onTap: widget.onTap ?? () => _handleMediaTap(context, isVideo),
@@ -444,7 +444,7 @@ class _ImageMessageCardState extends State<ImageMessageCard> {
     // Check if message has a file field (from API response)
     if (widget.message.fileUrl != null && widget.message.fileUrl!.isNotEmpty) {
       url = widget.message.fileUrl!;
-      debugPrint('📸 Using fileUrl: $url');
+      // Using provided fileUrl
     }
     // Fallback: construct URL from timestamp (for older messages)
     else {
@@ -452,14 +452,8 @@ class _ImageMessageCardState extends State<ImageMessageCard> {
       final mediaType = isVideo ? 'video' : 'image';
       final timestamp = widget.message.content;
       url = 'https://res.cloudinary.com/dsazvjswi/$mediaType/upload/chat_corner/messages/$mediaType/$timestamp.${isVideo ? 'mp4' : 'jpg'}';
-      debugPrint('📸 Constructed $mediaType URL from timestamp: $url');
+      // Constructed URL from timestamp
     }
-    
-    debugPrint('📸 Final media URL: $url');
-    debugPrint('📸 Message content: ${widget.message.content}');
-    debugPrint('📸 Message fileUrl: ${widget.message.fileUrl}');  
-    debugPrint('📸 Message type: ${widget.message.type}');
-    debugPrint('📸 Message metadata: ${widget.message.metadata}');
     
     return url;
   }

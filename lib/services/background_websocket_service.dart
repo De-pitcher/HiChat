@@ -215,45 +215,7 @@ class _BackgroundServiceImpl {
   static const String _tag = 'BackgroundServiceImpl';
   static const String _wsUrl = 'wss://chatcornerbackend-production.up.railway.app/ws/chat/';
   
-  /// Debug method to test URL construction and basic connectivity
-  static Future<void> debugConnection(String username) async {
-    try {
-      final encodedUsername = Uri.encodeComponent(username);
-      final urlString = '$_wsUrl$encodedUsername/';
-      developer.log('=== Debug Connection Test ===', name: _tag);
-      developer.log('Base URL: $_wsUrl', name: _tag);
-      developer.log('Username: "$username"', name: _tag);
-      developer.log('Encoded: "$encodedUsername"', name: _tag);
-      developer.log('Final URL: "$urlString"', name: _tag);
-      
-      final uri = Uri.tryParse(urlString);
-      if (uri == null) {
-        developer.log('❌ URI parsing failed!', name: _tag, level: 1000);
-        return;
-      }
-      
-      developer.log('✅ URI parsed successfully: $uri', name: _tag);
-      developer.log('URI components - scheme: ${uri.scheme}, host: ${uri.host}, path: ${uri.path}', name: _tag);
-      
-      // Test basic HTTP connectivity to the host
-      try {
-        final httpUri = Uri.parse('https://${uri.host}/');
-        developer.log('Testing HTTP connectivity to: $httpUri', name: _tag);
-        
-        final response = await http.get(httpUri).timeout(Duration(seconds: 10));
-        developer.log('✅ HTTP test successful, status: ${response.statusCode}', name: _tag);
-      } catch (httpError) {
-        developer.log('❌ HTTP test failed: $httpError', name: _tag, level: 1000);
-      }
-      
-      developer.log('=== End Debug Test ===', name: _tag);
-    } catch (e) {
-      developer.log('❌ Debug connection test failed: $e', name: _tag, level: 1000);
-    }
-  }
-  
   // Background service implementation
-  
   final ServiceInstance _service;
   WebSocketChannel? _webSocket;
   StreamSubscription? _subscription;
