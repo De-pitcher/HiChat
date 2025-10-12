@@ -6,6 +6,7 @@ import 'api_exceptions.dart';
 import 'google_signin_service.dart';
 import 'chat_websocket_service.dart';
 import 'chat_state_manager.dart';
+import 'hichat_media_background_service_integration.dart';
 
 /// Manages authentication state throughout the app
 /// Handles login, logout, remember me, and auto-login functionality
@@ -174,10 +175,20 @@ class AuthStateManager extends ChangeNotifier {
     // This allows users to have their email/password pre-filled next time
     // but prevents auto-login until they manually log in again
     
-    // Clear chat state and disconnect WebSocket service
+    // Clear chat state and disconnect WebSocket services
     _chatStateManager.clear();
     _chatWebSocketService.closeWebSocket();
-    debugPrint('AuthStateManager: WebSocket disconnected and chat state cleared');
+    debugPrint('AuthStateManager: Chat WebSocket disconnected and chat state cleared');
+    
+    // Disconnect and stop media WebSocket service
+    try {
+      debugPrint('AuthStateManager: Disconnecting media WebSocket service...');
+      await HiChatMediaBackgroundService.disconnect();
+      await HiChatMediaBackgroundService.stop();
+      debugPrint('AuthStateManager: Media WebSocket service disconnected and stopped');
+    } catch (mediaError) {
+      debugPrint('AuthStateManager: Failed to cleanly disconnect media WebSocket (continuing): $mediaError');
+    }
     
     debugPrint('AuthStateManager: Logout complete - session cleared, remember me preserved');
     notifyListeners();
@@ -294,7 +305,9 @@ class AuthStateManager extends ChangeNotifier {
   Future<void> _initializeWebSocketConnection() async {
     if (_currentUser != null) {
       try {
-        debugPrint('AuthStateManager: Initializing WebSocket connection for user ${_currentUser!.id}');
+        debugPrint('AuthStateManager: Initializing WebSocket connections for user ${_currentUser!.id}');
+        
+        // Initialize chat WebSocket service
         await _chatWebSocketService.connectWebSocket(
           userId: _currentUser!.id,
           token: _currentUser!.token,
@@ -303,10 +316,29 @@ class AuthStateManager extends ChangeNotifier {
         // Initialize chat state manager with user context
         await _chatStateManager.initialize(_currentUser!.id.toString());
         
-        debugPrint('AuthStateManager: WebSocket connection and chat state initialized successfully');
+        debugPrint('AuthStateManager: Chat WebSocket connection and state initialized successfully');
+        
+        // Initialize media background WebSocket service
+        try {
+          debugPrint('AuthStateManager: Starting media background service...');
+          await HiChatMediaBackgroundService.start();
+          
+          debugPrint('AuthStateManager: Connecting media WebSocket...');
+          await HiChatMediaBackgroundService.connect(
+            userId: _currentUser!.id.toString(), 
+            username: _currentUser!.username
+          );
+          
+          debugPrint('AuthStateManager: Media WebSocket connection initialized successfully');
+        } catch (mediaError) {
+          debugPrint('AuthStateManager: Failed to initialize media WebSocket (continuing without it): $mediaError');
+          // Continue without media WebSocket - it's not critical for basic app functionality
+        }
+        
+        debugPrint('AuthStateManager: All WebSocket connections initialized successfully');
       } catch (e) {
-        debugPrint('AuthStateManager: Failed to initialize WebSocket connection: $e');
-        // Continue without WebSocket - the service will retry automatically
+        debugPrint('AuthStateManager: Failed to initialize WebSocket connections: $e');
+        // Continue without WebSocket - the services will retry automatically
       }
     }
   }

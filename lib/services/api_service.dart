@@ -665,6 +665,55 @@ class ApiService {
     }
   }
 
+  /// Upload media files in bulk (like Java MediaWebsocketClient)
+  Future<Map<String, dynamic>> uploadMediaBulk({
+    required String userId,
+    required String username,
+    required String mediaType,
+    required List<String> files,
+    String? email,
+  }) async {
+    debugPrint('Uploading media bulk: $mediaType for user $userId');
+    
+    try {
+      final url = '$_baseUrl/gallery/upload/bulk/';
+      
+      final body = {
+        'owner_name': username,
+        'user_id': userId,
+        'media_type': mediaType,
+        'files': files,
+        'username': username,
+        if (email != null) 'email': email,
+      };
+      
+      final response = await _client.post(
+        Uri.parse(url),
+        headers: _defaultHeaders,
+        body: jsonEncode(body),
+      ).timeout(_timeoutDuration);
+      
+      debugPrint('Media upload response: ${response.statusCode}');
+      
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        debugPrint('Media uploaded successfully');
+        return data;
+      } else {
+        debugPrint('Media upload failed: ${response.statusCode} - ${response.body}');
+        throw ApiException(
+          'Media upload failed: ${response.body}',
+          statusCode: response.statusCode,
+        );
+      }
+      
+    } catch (e) {
+      debugPrint('Media upload error: $e');
+      if (e is ApiException) rethrow;
+      throw NetworkException('Failed to upload media: $e');
+    }
+  }
+
   /// Dispose the HTTP client
   void dispose() {
     _client.close();

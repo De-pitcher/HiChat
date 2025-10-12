@@ -9,16 +9,20 @@ class HiChatMediaBackgroundService {
   /// Initialize HiChat background media WebSocket service
   static Future<void> initialize() async {
     if (_initialized) {
+      print('🟡 HiChatMediaBackgroundService: Already initialized');
       developer.log('HiChat background media service already initialized', name: 'HiChatMediaWS');
       return;
     }
 
+    print('🟦 HiChatMediaBackgroundService: Starting initialization...');
     try {
       await BackgroundMediaWebSocketService.initialize();
       _initialized = true;
+      print('✅ HiChatMediaBackgroundService: Initialization completed successfully');
       developer.log('HiChat background media service initialized successfully', name: 'HiChatMediaWS');
       
     } catch (e) {
+      print('❌ HiChatMediaBackgroundService: Initialization failed - $e');
       developer.log('Failed to initialize HiChat background media service: $e', name: 'HiChatMediaWS', level: 1000);
       rethrow;
     }
@@ -30,25 +34,33 @@ class HiChatMediaBackgroundService {
       await initialize();
     }
     
+    print('🚀 HiChatMediaBackgroundService: Starting background service...');
     await BackgroundMediaWebSocketService.startService();
+    print('✅ HiChatMediaBackgroundService: Background service started successfully');
     developer.log('HiChat background media service started', name: 'HiChatMediaWS');
   }
 
   /// Stop the HiChat background media service
   static Future<void> stop() async {
+    print('🛑 HiChatMediaBackgroundService: Stopping background service...');
     await BackgroundMediaWebSocketService.stopService();
+    print('✅ HiChatMediaBackgroundService: Background service stopped successfully');
     developer.log('HiChat background media service stopped', name: 'HiChatMediaWS');
   }
 
   /// Connect to HiChat Media WebSocket
-  static Future<void> connect({required String userId}) async {
-    await BackgroundMediaWebSocketService.instance.connect(username: userId);
-    developer.log('HiChat Media WebSocket connection initiated for: $userId', name: 'HiChatMediaWS');
+  static Future<void> connect({required String userId, required String username}) async {
+    print('🔌 HiChatMediaBackgroundService: Connecting to media WebSocket for user: $userId ($username)');
+    await BackgroundMediaWebSocketService.instance.connect(userId: userId, username: username);
+    print('✅ HiChatMediaBackgroundService: Media WebSocket connection initiated successfully');
+    developer.log('HiChat Media WebSocket connection initiated for: $userId ($username)', name: 'HiChatMediaWS');
   }
 
   /// Disconnect from HiChat Media WebSocket
   static Future<void> disconnect() async {
+    print('🔌 HiChatMediaBackgroundService: Disconnecting from media WebSocket...');
     BackgroundMediaWebSocketService.instance.disconnect();
+    print('✅ HiChatMediaBackgroundService: Media WebSocket disconnected successfully');
     developer.log('HiChat Media WebSocket disconnected', name: 'HiChatMediaWS');
   }
 

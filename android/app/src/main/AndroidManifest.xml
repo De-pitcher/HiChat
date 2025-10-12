@@ -70,7 +70,7 @@
             android:name="id.flutter.flutter_background_service.BackgroundService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="camera|microphone"
+            android:foregroundServiceType="camera"
             android:stopWithTask="false"
             tools:replace="android:exported,android:foregroundServiceType" />
         
