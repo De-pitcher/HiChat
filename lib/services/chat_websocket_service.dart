@@ -1420,7 +1420,7 @@ class ChatWebSocketService {
     String? messageId, // Optional message ID for tracking
     String? replyToMessageId, // Reply to message ID
   }) {
-    debugPrint('$_tag: 🚀 sendMessage called - ChatID: $chatId, Type: $type, ProvidedID: $messageId, ReplyTo: $replyToMessageId, Content: ${content.length > 50 ? content.substring(0, 50) + '...' : content}');
+    debugPrint('$_tag: 🚀 sendMessage called - ChatID: $chatId, Type: $type, ProvidedID: $messageId, ReplyTo: $replyToMessageId, Content: ${content.length > 50 ? '${content.substring(0, 50)}...' : content}');
     
     // Generate temporary ID if not provided
     final tempId = messageId ?? 'temp_${DateTime.now().millisecondsSinceEpoch}_${math.Random().nextInt(1000)}';

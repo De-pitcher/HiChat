@@ -596,7 +596,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     ],
                   ),
                 );
-              }).toList(),
+              }),
             ],
             
             const SizedBox(height: 24),

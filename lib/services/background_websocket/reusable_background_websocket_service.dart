@@ -339,9 +339,7 @@ class _ReusableBackgroundServiceImpl {
       }
       
       // Add connection data to query params
-      if (queryParams == null) {
-        queryParams = {};
-      }
+      queryParams ??= {};
       connectionData.forEach((key, value) {
         queryParams![key] = value.toString();
       });

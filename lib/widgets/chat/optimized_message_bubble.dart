@@ -770,8 +770,8 @@ class OptimizedMessageBubble extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: isDark 
-              ? Colors.grey[800]?.withOpacity(0.5)
-              : Colors.grey[200]?.withOpacity(0.7),
+              ? Colors.grey[800]?.withValues(alpha: 0.5)
+              : Colors.grey[200]?.withValues(alpha: 0.7),
             borderRadius: BorderRadius.circular(8),
             border: Border(
               left: BorderSide(

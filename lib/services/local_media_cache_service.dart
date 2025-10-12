@@ -109,7 +109,7 @@ class LocalMediaCacheService {
     try {
       final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
       final extension = _getFileExtension(originalFilename);
-      final filename = '${timestamp}$extension';
+      final filename = '$timestamp$extension';
       
       final appDir = await getApplicationDocumentsDirectory();
       final typeDir = _getTypeDirName(type);

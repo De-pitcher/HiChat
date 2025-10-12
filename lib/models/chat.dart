@@ -219,8 +219,8 @@ class Chat {
     
     if (participants is List) {
       return participants
-          .where((p) => p is Map<String, dynamic>)
-          .map((p) => User.fromJson(p as Map<String, dynamic>))
+          .whereType<Map<String, dynamic>>()
+          .map((p) => User.fromJson(p))
           .toList();
     }
     

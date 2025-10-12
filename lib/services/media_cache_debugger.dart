@@ -62,7 +62,7 @@ class MediaCacheDebugger {
       if (await metadataFile.exists()) {
         final content = await metadataFile.readAsString();
         debugPrint('🔍 Content length: ${content.length} characters');
-        debugPrint('🔍 Content preview: ${content.length > 200 ? content.substring(0, 200) + '...' : content}');
+        debugPrint('🔍 Content preview: ${content.length > 200 ? '${content.substring(0, 200)}...' : content}');
       }
       
       debugPrint('🔍 === END METADATA DEBUG ===');

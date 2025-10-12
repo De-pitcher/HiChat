@@ -268,7 +268,7 @@ class _CallsScreenState extends State<CallsScreen> with TickerProviderStateMixin
         bottom: TabBar(
           controller: _tabController,
           labelColor: AppColors.primary,
-          unselectedLabelColor: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.6),
+          unselectedLabelColor: Theme.of(context).textTheme.bodyLarge?.color?.withValues(alpha: 0.6),
           indicatorColor: AppColors.primary,
           tabs: const [
             Tab(
@@ -436,7 +436,7 @@ class _CallsScreenState extends State<CallsScreen> with TickerProviderStateMixin
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Theme.of(context).shadowColor.withOpacity(0.1),
+                color: Theme.of(context).shadowColor.withValues(alpha: 0.1),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -445,7 +445,7 @@ class _CallsScreenState extends State<CallsScreen> with TickerProviderStateMixin
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             leading: CircleAvatar(
-              backgroundColor: AppColors.primary.withOpacity(0.1),
+              backgroundColor: AppColors.primary.withValues(alpha: 0.1),
               child: Icon(
                 Icons.person,
                 color: AppColors.primary,
@@ -646,7 +646,7 @@ class _CallsScreenState extends State<CallsScreen> with TickerProviderStateMixin
         borderRadius: BorderRadius.circular(50),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).shadowColor.withOpacity(0.1),
+            color: Theme.of(context).shadowColor.withValues(alpha: 0.1),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -672,7 +672,7 @@ class _CallsScreenState extends State<CallsScreen> with TickerProviderStateMixin
                   Text(
                     letters,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.7),
+                      color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
                     ),
                   ),
               ],

@@ -146,7 +146,7 @@ class AudioRecordingService {
         final fileSize = File(path).lengthSync();
         if (fileSize > 0) {
           if (kDebugMode) {
-            print('📁 Audio file size: ${fileSize} bytes');
+            print('📁 Audio file size: $fileSize bytes');
           }
           final recordingPath = _currentRecordingPath;
           _currentRecordingPath = null;
@@ -265,6 +265,6 @@ class AudioRecordingService {
   /// Generate a unique filename for audio recording
   String _generateAudioFileName() {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    return 'audio_${timestamp}.aac';
+    return 'audio_$timestamp.aac';
   }
 }

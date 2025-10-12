@@ -92,7 +92,7 @@ class ReplyMessage {
 
   @override
   String toString() {
-    return 'ReplyMessage(id: $id, sender: ${sender.username}, content: ${content.length > 30 ? content.substring(0, 30) + '...' : content})';
+    return 'ReplyMessage(id: $id, sender: ${sender.username}, content: ${content.length > 30 ? '${content.substring(0, 30)}...' : content})';
   }
 
   @override

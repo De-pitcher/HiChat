@@ -61,7 +61,7 @@ class BackgroundMediaWebSocketService {
       ),
     );
     
-    print('✅ BackgroundMediaWebSocketService: Configuration completed successfully');
+    debugPrint('✅ BackgroundMediaWebSocketService: Configuration completed successfully');
     developer.log('Background media service configured successfully', name: _tag);
   }
 
