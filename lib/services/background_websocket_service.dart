@@ -631,9 +631,22 @@ class _BackgroundServiceImpl {
           title: 'HiChat - $title',
           content: content,
         );
+        developer.log('✅ Updated foreground notification: $title - $content', name: _tag);
       }
     } catch (e) {
-      developer.log('Failed to update notification: $e', name: _tag, level: 900);
+      developer.log('❌ Failed to update chat notification: $e', name: _tag, level: 1000);
+      // Try fallback notification
+      try {
+        if (_service is AndroidServiceInstance) {
+          await _service.setForegroundNotificationInfo(
+            title: 'HiChat Chat Service',
+            content: 'Background chat service running',
+          );
+          developer.log('✅ Used fallback notification for chat service', name: _tag);
+        }
+      } catch (fallbackError) {
+        developer.log('❌ Chat fallback notification also failed: $fallbackError', name: _tag, level: 1000);
+      }
     }
   }
 

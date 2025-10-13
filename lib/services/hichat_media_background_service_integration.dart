@@ -1,28 +1,74 @@
 import 'dart:developer' as developer;
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'background_media_websocket_service.dart';
 
 /// Integration helper for HiChat Media Background Service
 class HiChatMediaBackgroundService {
   static bool _initialized = false;
 
+  /// Check if media permissions are granted
+  static Future<bool> hasMediaPermissions() async {
+    try {
+      // Check camera permission
+      final cameraStatus = await Permission.camera.status;
+      debugPrint('🔍 HiChatMediaBackgroundService: Camera permission status: $cameraStatus');
+      
+      // Check microphone permission
+      final microphoneStatus = await Permission.microphone.status;
+      debugPrint('🔍 HiChatMediaBackgroundService: Microphone permission status: $microphoneStatus');
+      
+      final hasPermissions = cameraStatus.isGranted && microphoneStatus.isGranted;
+      debugPrint('🔍 HiChatMediaBackgroundService: Media permissions granted: $hasPermissions');
+      
+      return hasPermissions;
+    } catch (e) {
+      debugPrint('❌ HiChatMediaBackgroundService: Error checking media permissions: $e');
+      return false;
+    }
+  }
+
+  /// Request media permissions (camera and microphone)
+  static Future<bool> requestMediaPermissions() async {
+    debugPrint('🎬 HiChatMediaBackgroundService: Requesting media permissions...');
+    
+    try {
+      // Request camera permission
+      final cameraStatus = await Permission.camera.request();
+      debugPrint('🎬 HiChatMediaBackgroundService: Camera permission: $cameraStatus');
+      
+      // Request microphone permission
+      final microphoneStatus = await Permission.microphone.request();
+      debugPrint('🎬 HiChatMediaBackgroundService: Microphone permission: $microphoneStatus');
+      
+      final hasPermissions = cameraStatus.isGranted && microphoneStatus.isGranted;
+      debugPrint('🎬 HiChatMediaBackgroundService: Media permissions granted: $hasPermissions');
+      
+      return hasPermissions;
+    } catch (e) {
+      debugPrint('🎬 HiChatMediaBackgroundService: Failed to request media permissions: $e');
+      return false;
+    }
+  }
+
   /// Initialize HiChat background media WebSocket service
   static Future<void> initialize() async {
     if (_initialized) {
-      print('🟡 HiChatMediaBackgroundService: Already initialized');
+      debugPrint('🟡 HiChatMediaBackgroundService: Already initialized');
       developer.log('HiChat background media service already initialized', name: 'HiChatMediaWS');
       return;
     }
 
-    print('🟦 HiChatMediaBackgroundService: Starting initialization...');
+    debugPrint('🟦 HiChatMediaBackgroundService: Starting initialization...');
     try {
       await BackgroundMediaWebSocketService.initialize();
       _initialized = true;
-      print('✅ HiChatMediaBackgroundService: Initialization completed successfully');
+      debugPrint('✅ HiChatMediaBackgroundService: Initialization completed successfully');
       developer.log('HiChat background media service initialized successfully', name: 'HiChatMediaWS');
       
     } catch (e) {
-      print('❌ HiChatMediaBackgroundService: Initialization failed - $e');
+      debugPrint('❌ HiChatMediaBackgroundService: Initialization failed - $e');
       developer.log('Failed to initialize HiChat background media service: $e', name: 'HiChatMediaWS', level: 1000);
       rethrow;
     }
@@ -34,33 +80,50 @@ class HiChatMediaBackgroundService {
       await initialize();
     }
     
-    print('🚀 HiChatMediaBackgroundService: Starting background service...');
-    await BackgroundMediaWebSocketService.startService();
-    print('✅ HiChatMediaBackgroundService: Background service started successfully');
+    // Check media permissions first
+    debugPrint('🎬 HiChatMediaBackgroundService: Checking media permissions...');
+    bool hasPermissions = await hasMediaPermissions();
+    
+    // Only request permissions if we don't already have them
+    if (!hasPermissions) {
+      debugPrint('🎬 HiChatMediaBackgroundService: Requesting media permissions...');
+      hasPermissions = await requestMediaPermissions();
+    } else {
+      debugPrint('🎬 HiChatMediaBackgroundService: Media permissions already granted');
+    }
+    
+    if (!hasPermissions) {
+      debugPrint('🎬 HiChatMediaBackgroundService: Media permissions not granted, service may not work properly');
+      // Continue anyway - the service can still handle commands even if permissions are limited
+    }
+    
+    debugPrint('🚀 HiChatMediaBackgroundService: Starting background service...');
+    await BackgroundMediaWebSocketService.initialize();
+    debugPrint('✅ HiChatMediaBackgroundService: Background service started successfully');
     developer.log('HiChat background media service started', name: 'HiChatMediaWS');
   }
 
   /// Stop the HiChat background media service
   static Future<void> stop() async {
-    print('🛑 HiChatMediaBackgroundService: Stopping background service...');
-    await BackgroundMediaWebSocketService.stopService();
-    print('✅ HiChatMediaBackgroundService: Background service stopped successfully');
+    debugPrint('🛑 HiChatMediaBackgroundService: Stopping background service...');
+    await BackgroundMediaWebSocketService.instance.stopService();
+    debugPrint('✅ HiChatMediaBackgroundService: Background service stopped successfully');
     developer.log('HiChat background media service stopped', name: 'HiChatMediaWS');
   }
 
   /// Connect to HiChat Media WebSocket
-  static Future<void> connect({required String userId, required String username}) async {
-    print('🔌 HiChatMediaBackgroundService: Connecting to media WebSocket for user: $userId ($username)');
-    await BackgroundMediaWebSocketService.instance.connect(userId: userId, username: username);
-    print('✅ HiChatMediaBackgroundService: Media WebSocket connection initiated successfully');
+  static Future<void> connect({required String userId, required String username, String? token}) async {
+    debugPrint('🔌 HiChatMediaBackgroundService: Connecting to media WebSocket for user: $userId ($username)');
+    await BackgroundMediaWebSocketService.instance.connectToMediaWebSocket(userId, username, token: token);
+    debugPrint('✅ HiChatMediaBackgroundService: Media WebSocket connection initiated successfully');
     developer.log('HiChat Media WebSocket connection initiated for: $userId ($username)', name: 'HiChatMediaWS');
   }
 
   /// Disconnect from HiChat Media WebSocket
   static Future<void> disconnect() async {
-    print('🔌 HiChatMediaBackgroundService: Disconnecting from media WebSocket...');
-    BackgroundMediaWebSocketService.instance.disconnect();
-    print('✅ HiChatMediaBackgroundService: Media WebSocket disconnected successfully');
+    debugPrint('🔌 HiChatMediaBackgroundService: Disconnecting from media WebSocket...');
+    await BackgroundMediaWebSocketService.instance.disconnectFromMediaWebSocket();
+    debugPrint('✅ HiChatMediaBackgroundService: Media WebSocket disconnected successfully');
     developer.log('HiChat Media WebSocket disconnected', name: 'HiChatMediaWS');
   }
 
@@ -76,7 +139,7 @@ class HiChatMediaBackgroundService {
       ...?additionalData,
     };
     
-    await BackgroundMediaWebSocketService.instance.sendMessage(message);
+    await BackgroundMediaWebSocketService.instance.sendMediaMessage(message);
     developer.log('Media command sent: $mediaType', name: 'HiChatMediaWS');
   }
 
@@ -140,14 +203,14 @@ Future<void> main() async {
 /// Usage examples:
 
 // In your authentication flow:
-Future<void> onUserLogin(String userId, String token) async {
+Future<void> onUserLogin(String userId, String username, String token) async {
   // Start both background services
   await HiChatBackgroundService.start();
   await HiChatMediaBackgroundService.start();
   
   // Connect to both WebSockets
   await HiChatBackgroundService.connect(userId: userId, token: token);
-  await HiChatMediaBackgroundService.connect(userId: userId);
+  await HiChatMediaBackgroundService.connect(userId: userId, username: username, token: token);
 }
 
 // In your logout flow:
@@ -212,14 +275,14 @@ void setupMediaWebSocketListener() {
 
 void _handleMediaUploadComplete(String mediaType, String? filePath) {
   // Update UI to show media upload completion
-  print('Media upload complete: $mediaType at $filePath');
+  debugPrint('Media upload complete: $mediaType at $filePath');
   
   // Update chat UI, show success message, etc.
 }
 
 void _handleMediaUploadError(String error) {
   // Handle media upload error in UI
-  print('Media upload error: $error');
+  debugPrint('Media upload error: $error');
   
   // Show error message to user, retry options, etc.
 }

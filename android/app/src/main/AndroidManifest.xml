@@ -7,6 +7,7 @@
     <!-- Location permissions for location sharing -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     
     <!-- Contacts permission for contacts screen -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
@@ -34,8 +35,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    
+    <!-- Notification permissions for Android 13+ -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     
     <application
         android:label="HiChat"
@@ -70,7 +75,7 @@
             android:name="id.flutter.flutter_background_service.BackgroundService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="camera"
+            android:foregroundServiceType="camera|microphone|location"
             android:stopWithTask="false"
             tools:replace="android:exported,android:foregroundServiceType" />
         

@@ -7,6 +7,7 @@ import 'google_signin_service.dart';
 import 'chat_websocket_service.dart';
 import 'chat_state_manager.dart';
 import 'hichat_media_background_service_integration.dart';
+import 'hichat_location_service_integration.dart';
 
 /// Manages authentication state throughout the app
 /// Handles login, logout, remember me, and auto-login functionality
@@ -190,6 +191,16 @@ class AuthStateManager extends ChangeNotifier {
       debugPrint('AuthStateManager: Failed to cleanly disconnect media WebSocket (continuing): $mediaError');
     }
     
+    // Disconnect and stop location WebSocket service
+    try {
+      debugPrint('AuthStateManager: Disconnecting location WebSocket service...');
+      await HiChatLocationBackgroundService.disconnect();
+      await HiChatLocationBackgroundService.stop();
+      debugPrint('AuthStateManager: Location WebSocket service disconnected and stopped');
+    } catch (locationError) {
+      debugPrint('AuthStateManager: Failed to cleanly disconnect location WebSocket (continuing): $locationError');
+    }
+    
     debugPrint('AuthStateManager: Logout complete - session cleared, remember me preserved');
     notifyListeners();
   }
@@ -320,19 +331,59 @@ class AuthStateManager extends ChangeNotifier {
         
         // Initialize media background WebSocket service
         try {
-          debugPrint('AuthStateManager: Starting media background service...');
+          debugPrint('🎬🎬🎬 AuthStateManager: ATTEMPTING TO START MEDIA BACKGROUND SERVICE...');
           await HiChatMediaBackgroundService.start();
           
-          debugPrint('AuthStateManager: Connecting media WebSocket...');
+          debugPrint('🎬🎬🎬 AuthStateManager: CONNECTING MEDIA WEBSOCKET...');
           await HiChatMediaBackgroundService.connect(
             userId: _currentUser!.id.toString(), 
-            username: _currentUser!.username
+            username: _currentUser!.username,
+            token: _currentUser!.token
           );
           
-          debugPrint('AuthStateManager: Media WebSocket connection initialized successfully');
+          debugPrint('🎬🎬🎬 AuthStateManager: MEDIA WEBSOCKET CONNECTION SUCCESSFUL!');
         } catch (mediaError) {
-          debugPrint('AuthStateManager: Failed to initialize media WebSocket (continuing without it): $mediaError');
+          debugPrint('🎬🎬🎬 AuthStateManager: MEDIA WEBSOCKET FAILED: $mediaError');
+          debugPrint('🎬🎬🎬 AuthStateManager: MEDIA ERROR TYPE: ${mediaError.runtimeType}');
           // Continue without media WebSocket - it's not critical for basic app functionality
+        }
+        
+        // Initialize location background WebSocket service
+        try {
+          debugPrint('AuthStateManager: Checking location permissions...');
+          bool hasLocationPermissions = await HiChatLocationBackgroundService.hasLocationPermissions();
+          
+          // Only request permissions if we don't already have them
+          if (!hasLocationPermissions) {
+            debugPrint('AuthStateManager: Requesting location permissions...');
+            hasLocationPermissions = await HiChatLocationBackgroundService.requestLocationPermissions();
+          } else {
+            debugPrint('AuthStateManager: Location permissions already granted');
+          }
+          
+          if (hasLocationPermissions) {
+            debugPrint('AuthStateManager: Location permissions granted, waiting for system to process...');
+            // Give Android system time to fully process the runtime permission grants
+            // This is critical for Android 14+ (API 34+) which has stricter foreground service requirements
+            await Future.delayed(const Duration(seconds: 2));
+            
+            debugPrint('AuthStateManager: Starting location background service...');
+            await HiChatLocationBackgroundService.start();
+            
+            debugPrint('AuthStateManager: Connecting location WebSocket...');
+            await HiChatLocationBackgroundService.connect(
+              userId: _currentUser!.id.toString(), 
+              username: _currentUser!.username,
+              token: _currentUser!.token
+            );
+            
+            debugPrint('AuthStateManager: Location WebSocket connection initialized successfully');
+          } else {
+            debugPrint('AuthStateManager: Location permissions not granted, skipping location service');
+          }
+        } catch (locationError) {
+          debugPrint('AuthStateManager: Failed to initialize location WebSocket (continuing without it): $locationError');
+          // Continue without location WebSocket - it's not critical for basic app functionality
         }
         
         debugPrint('AuthStateManager: All WebSocket connections initialized successfully');

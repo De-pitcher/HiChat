@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'firebase_options.dart';
 import 'constants/app_theme.dart';
@@ -8,6 +9,7 @@ import 'constants/app_constants.dart';
 import 'services/auth_state_manager.dart';
 import 'services/chat_state_manager.dart';
 import 'services/hichat_media_background_service_integration.dart';
+import 'services/hichat_location_service_integration.dart';
 import 'services/camera_service.dart';
 import 'services/api_service.dart';
 import 'services/isolate_communication_service.dart';
@@ -35,15 +37,84 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   
+  // Initialize notifications first
+  await _initializeNotifications();
+  
   // Initialize background services (configure but don't auto-start)
   try {
     await HiChatMediaBackgroundService.initialize();
+    await HiChatLocationBackgroundService.initialize();
     await _setupMainIsolateCameraHandlers();
   } catch (e) {
-    debugPrint('Failed to initialize media background service: $e');
+    debugPrint('Failed to initialize background services: $e');
   }
   
   runApp(const HiChatApp());
+}
+
+/// Initialize global notification system
+Future<void> _initializeNotifications() async {
+  final FlutterLocalNotificationsPlugin notifications = FlutterLocalNotificationsPlugin();
+  
+  // Create notification channels
+  const channels = [
+    AndroidNotificationChannel(
+      'hichat_media_websocket',
+      'HiChat Media WebSocket',
+      description: 'Notifications for media upload service',
+      importance: Importance.low,
+      playSound: false,
+      enableVibration: false,
+    ),
+    AndroidNotificationChannel(
+      'hichat_chat_websocket', 
+      'HiChat Chat WebSocket',
+      description: 'Notifications for chat service',
+      importance: Importance.low,
+      playSound: false,
+      enableVibration: false,
+    ),
+    AndroidNotificationChannel(
+      'hichat_location_websocket',
+      'HiChat Location WebSocket', 
+      description: 'Notifications for location sharing service',
+      importance: Importance.low,
+      playSound: false,
+      enableVibration: false,
+    ),
+    AndroidNotificationChannel(
+      'hichat_media_operations',
+      'HiChat Media Operations',
+      description: 'Notifications for media capture operations',
+      importance: Importance.high,
+    ),
+  ];
+  
+  final androidImplementation = notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+  
+  if (androidImplementation != null) {
+    for (final channel in channels) {
+      try {
+        await androidImplementation.createNotificationChannel(channel);
+        debugPrint('✅ Created notification channel: ${channel.id}');
+      } catch (e) {
+        debugPrint('❌ Failed to create notification channel ${channel.id}: $e');
+      }
+    }
+  }
+  
+  // Initialize notifications
+  const initializationSettings = InitializationSettings(
+    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    iOS: DarwinInitializationSettings(),
+  );
+  
+  try {
+    await notifications.initialize(initializationSettings);
+    debugPrint('✅ Notification system initialized successfully');
+  } catch (e) {
+    debugPrint('❌ Failed to initialize notification system: $e');
+  }
 }
 
 /// Setup main isolate handlers for camera requests from background service
