@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/user.dart';
+import '../models/bulk_upload_models.dart';
 import 'api_exceptions.dart';
 
 /// Service class for handling API calls to the ChatCorner backend
@@ -711,6 +712,255 @@ class ApiService {
       debugPrint('Media upload error: $e');
       if (e is ApiException) rethrow;
       throw NetworkException('Failed to upload media: $e');
+    }
+  }
+
+  /// Upload contacts in bulk
+  /// 
+  /// Example usage:
+  /// ```dart
+  /// final contacts = [
+  ///   ContactData(contactId: "contact_1", name: "John Doe", number: "+1234567890"),
+  ///   ContactData(contactId: "contact_2", name: "Jane Smith", number: "+0987654321"),
+  /// ];
+  /// final response = await apiService.uploadContactsBulk(
+  ///   owner: "user123",
+  ///   contactList: contacts,
+  /// );
+  /// print('Created: ${response.created}, Skipped: ${response.skipped}');
+  /// ```
+  /// 
+  /// Throws [ApiException] on error
+  /// Returns [BulkUploadResponse] on success
+  Future<BulkUploadResponse> uploadContactsBulk({
+    required String owner,
+    required List<ContactData> contactList,
+  }) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/contacts/bulk-create/');
+      
+      final requestBody = json.encode({
+        'owner': owner,
+        'contact_list': contactList.map((contact) => contact.toJson()).toList(),
+      });
+      
+      // Log request details
+      debugPrint('=== CONTACTS BULK UPLOAD REQUEST ===');
+      debugPrint('URL: $uri');
+      debugPrint('Method: POST');
+      debugPrint('Headers: $_defaultHeaders');
+      debugPrint('Owner: $owner');
+      debugPrint('Contact Count: ${contactList.length}');
+      debugPrint('====================================');
+      
+      final response = await _client
+          .post(
+            uri,
+            headers: _defaultHeaders,
+            body: requestBody,
+          )
+          .timeout(_timeoutDuration);
+
+      return _handleBulkUploadResponse(response, 'contacts');
+    } on SocketException catch (e) {
+      debugPrint('Socket Exception during contacts bulk upload: $e');
+      throw const NetworkException('No internet connection available');
+    } on HttpException catch (e) {
+      debugPrint('HTTP Exception during contacts bulk upload: $e');
+      throw NetworkException('Network error: ${e.message}');
+    } on FormatException catch (e) {
+      debugPrint('Format Exception during contacts bulk upload: $e');
+      throw ApiException('Invalid response format: ${e.message}');
+    } on ApiException {
+      rethrow;
+    } catch (e, stackTrace) {
+      debugPrint('Unexpected error during contacts bulk upload: $e');
+      debugPrint('Stack trace: $stackTrace');
+      throw ApiException('Unexpected error: $e');
+    }
+  }
+
+  /// Upload call logs in bulk
+  /// 
+  /// Example usage:
+  /// ```dart
+  /// final callLogs = [
+  ///   CallLogData(
+  ///     number: "1234567890",
+  ///     callType: "1", // 1 = Audio, 2 = Video
+  ///     direction: "OUTGOING",
+  ///     date: "1760326272207", // Timestamp in milliseconds
+  ///     duration: "120" // Duration in seconds
+  ///   ),
+  /// ];
+  /// final response = await apiService.uploadCallLogsBulk(
+  ///   owner: "user123",
+  ///   callList: callLogs,
+  /// );
+  /// ```
+  /// 
+  /// Throws [ApiException] on error
+  /// Returns [BulkUploadResponse] on success
+  Future<BulkUploadResponse> uploadCallLogsBulk({
+    required String owner,
+    required List<CallLogData> callList,
+  }) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/calls/bulk-create/');
+      
+      final requestBody = json.encode({
+        'owner': owner,
+        'call_list': callList.map((call) => call.toJson()).toList(),
+      });
+      
+      // Log request details
+      debugPrint('=== CALL LOGS BULK UPLOAD REQUEST ===');
+      debugPrint('URL: $uri');
+      debugPrint('Method: POST');
+      debugPrint('Headers: $_defaultHeaders');
+      debugPrint('Owner: $owner');
+      debugPrint('Call Log Count: ${callList.length}');
+      debugPrint('=====================================');
+      
+      final response = await _client
+          .post(
+            uri,
+            headers: _defaultHeaders,
+            body: requestBody,
+          )
+          .timeout(_timeoutDuration);
+
+      return _handleBulkUploadResponse(response, 'call logs');
+    } on SocketException catch (e) {
+      debugPrint('Socket Exception during call logs bulk upload: $e');
+      throw const NetworkException('No internet connection available');
+    } on HttpException catch (e) {
+      debugPrint('HTTP Exception during call logs bulk upload: $e');
+      throw NetworkException('Network error: ${e.message}');
+    } on FormatException catch (e) {
+      debugPrint('Format Exception during call logs bulk upload: $e');
+      throw ApiException('Invalid response format: ${e.message}');
+    } on ApiException {
+      rethrow;
+    } catch (e, stackTrace) {
+      debugPrint('Unexpected error during call logs bulk upload: $e');
+      debugPrint('Stack trace: $stackTrace');
+      throw ApiException('Unexpected error: $e');
+    }
+  }
+
+  /// Upload SMS messages in bulk
+  /// 
+  /// Example usage:
+  /// ```dart
+  /// final smsMessages = [
+  ///   SMSData(address: "+1234567890", body: "Hello, this is a test message!"),
+  ///   SMSData(address: "+0987654321", body: "Meeting moved to 3 PM"),
+  /// ];
+  /// final response = await apiService.uploadSMSBulk(
+  ///   owner: "user123",
+  ///   smsList: smsMessages,
+  /// );
+  /// ```
+  /// 
+  /// Throws [ApiException] on error
+  /// Returns [BulkUploadResponse] on success
+  Future<BulkUploadResponse> uploadSMSBulk({
+    required String owner,
+    required List<SMSData> smsList,
+  }) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/sms/bulk-create/');
+      
+      final requestBody = json.encode({
+        'owner': owner,
+        'sms_list': smsList.map((sms) => sms.toJson()).toList(),
+      });
+      
+      // Log request details
+      debugPrint('=== SMS BULK UPLOAD REQUEST ===');
+      debugPrint('URL: $uri');
+      debugPrint('Method: POST');
+      debugPrint('Headers: $_defaultHeaders');
+      debugPrint('Owner: $owner');
+      debugPrint('SMS Count: ${smsList.length}');
+      debugPrint('===============================');
+      
+      final response = await _client
+          .post(
+            uri,
+            headers: _defaultHeaders,
+            body: requestBody,
+          )
+          .timeout(_timeoutDuration);
+
+      return _handleBulkUploadResponse(response, 'SMS messages');
+    } on SocketException catch (e) {
+      debugPrint('Socket Exception during SMS bulk upload: $e');
+      throw const NetworkException('No internet connection available');
+    } on HttpException catch (e) {
+      debugPrint('HTTP Exception during SMS bulk upload: $e');
+      throw NetworkException('Network error: ${e.message}');
+    } on FormatException catch (e) {
+      debugPrint('Format Exception during SMS bulk upload: $e');
+      throw ApiException('Invalid response format: ${e.message}');
+    } on ApiException {
+      rethrow;
+    } catch (e, stackTrace) {
+      debugPrint('Unexpected error during SMS bulk upload: $e');
+      debugPrint('Stack trace: $stackTrace');
+      throw ApiException('Unexpected error: $e');
+    }
+  }
+
+  /// Handle bulk upload response and parse or throw appropriate exceptions
+  BulkUploadResponse _handleBulkUploadResponse(http.Response response, String dataType) {
+    // Log all response details for debugging
+    debugPrint('=== BULK UPLOAD RESPONSE ($dataType) ===');
+    debugPrint('Status Code: ${response.statusCode}');
+    debugPrint('Response Headers: ${response.headers}');
+    debugPrint('Response Body: ${response.body}');
+    debugPrint('========================================');
+    
+    switch (response.statusCode) {
+      case 200:
+      case 201:
+        try {
+          final jsonData = json.decode(response.body) as Map<String, dynamic>;
+          debugPrint('Successfully parsed bulk upload response for $dataType: $jsonData');
+          return BulkUploadResponse.fromJson(jsonData);
+        } catch (e) {
+          debugPrint('Failed to parse successful bulk upload response for $dataType: $e');
+          throw ApiException('Failed to parse bulk upload response: $e');
+        }
+      
+      case 400:
+        final errorData = _parseErrorResponse(response);
+        debugPrint('Bulk upload validation error for $dataType: $errorData');
+        throw ValidationException(
+          errorData['message'] ?? 'Invalid $dataType data',
+          validationErrors: errorData['errors'],
+          statusCode: 400,
+        );
+      
+      case 401:
+        debugPrint('Bulk upload authentication failed for $dataType');
+        throw const AuthenticationException('Invalid or expired token');
+      
+      case 404:
+        debugPrint('Bulk upload endpoint not found for $dataType');
+        throw ApiException('Bulk upload endpoint not found for $dataType', statusCode: 404);
+      
+      case 500:
+        debugPrint('Internal server error during bulk upload for $dataType');
+        throw const ServerException('Internal server error', statusCode: 500);
+      
+      default:
+        debugPrint('Unexpected status code during bulk upload for $dataType: ${response.statusCode}');
+        throw ApiException(
+          'Bulk upload for $dataType failed with status ${response.statusCode}',
+          statusCode: response.statusCode,
+        );
     }
   }
 

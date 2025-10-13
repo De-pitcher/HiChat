@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
 import '../../constants/app_theme.dart';
+import '../../services/auth_state_manager.dart';
+import '../../services/api_service.dart';
+import '../../models/bulk_upload_models.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -88,6 +92,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
         });
 
         debugPrint('Loaded ${contactsWithPhones.length} contacts');
+        
+        // Upload contacts to server in bulk
+        await _uploadContactsBulk(contactsWithPhones);
       } else {
         setState(() {
           _hasPermission = false;
@@ -137,6 +144,77 @@ class _ContactsScreenState extends State<ContactsScreen> {
         );
       },
     );
+  }
+
+  Future<void> _uploadContactsBulk(List<Contact> contacts) async {
+    try {
+      final authManager = context.read<AuthStateManager>();
+      final currentUser = authManager.currentUser;
+      
+      if (currentUser == null) {
+        debugPrint('Cannot upload contacts: No authenticated user found');
+        return;
+      }
+
+      debugPrint('Starting bulk contacts upload for ${contacts.length} contacts');
+
+      // Convert Flutter contacts to our API format
+      final List<ContactData> contactsData = contacts.asMap().entries.map((entry) {
+        final index = entry.key;
+        final contact = entry.value;
+        final phoneNumber = contact.phones.isNotEmpty ? contact.phones.first.number : '';
+        
+        return ContactData(
+          contactId: 'contact_${index}_${DateTime.now().millisecondsSinceEpoch}',
+          name: contact.displayName,
+          number: phoneNumber,
+        );
+      }).where((contactData) => contactData.number.isNotEmpty).toList();
+
+      if (contactsData.isEmpty) {
+        debugPrint('No valid contacts to upload (all missing phone numbers)');
+        return;
+      }
+
+      // Upload to server
+      final apiService = ApiService();
+      final response = await apiService.uploadContactsBulk(
+        owner: currentUser.id.toString(),
+        contactList: contactsData,
+      );
+
+      debugPrint('Bulk contacts upload successful: ${response.message}');
+      debugPrint('Created: ${response.created}, Skipped: ${response.skipped}, Total: ${response.totalProcessed}');
+
+      // Show success message to user
+      if (mounted) {
+        final successMessage = response.created > 0 
+            ? 'Contacts synced: ${response.created} uploaded successfully'
+            : 'All ${response.totalProcessed} contacts were already synced';
+            
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(successMessage),
+            backgroundColor: response.created > 0 ? Colors.green : Colors.blue,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+
+    } catch (e) {
+      debugPrint('Error uploading contacts in bulk: $e');
+      
+      // Show error message to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to sync contacts: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
   }
 
   void _filterContacts(String query) {

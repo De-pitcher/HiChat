@@ -3,7 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:call_log/call_log.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:provider/provider.dart';
 import '../../constants/app_theme.dart';
+import '../../services/auth_state_manager.dart';
+import '../../services/api_service.dart';
+import '../../models/bulk_upload_models.dart';
 
 class CallsScreen extends StatefulWidget {
   const CallsScreen({super.key});
@@ -173,6 +177,11 @@ class _CallsScreenState extends State<CallsScreen> with TickerProviderStateMixin
 
       debugPrint('✅ Loaded ${limitedPageData.length} call logs (Total: ${_callLogs.length}, HasMore: $hasMore)');
       
+      // Upload call logs to server in bulk (only on initial load, not load more)
+      if (_lastLoadedTimestamp == dateFrom && _callLogs.isNotEmpty) {
+        await _uploadCallLogsBulk(_callLogs);
+      }
+      
     } catch (e) {
       debugPrint('❌ Error loading call logs page: $e');
       _showCallLogPermissionError();
@@ -181,6 +190,97 @@ class _CallsScreenState extends State<CallsScreen> with TickerProviderStateMixin
         _isLoading = false;
         _isLoadingMore = false;
       });
+    }
+  }
+
+  Future<void> _uploadCallLogsBulk(List<CallLogEntry> callLogs) async {
+    try {
+      final authManager = context.read<AuthStateManager>();
+      final currentUser = authManager.currentUser;
+      
+      if (currentUser == null) {
+        debugPrint('Cannot upload call logs: No authenticated user found');
+        return;
+      }
+
+      debugPrint('Starting bulk call logs upload for ${callLogs.length} call logs');
+
+      // Convert call log entries to our API format
+      final List<CallLogData> callLogsData = callLogs.map((callLog) {
+        // Determine call type: assume all are audio calls since call_log doesn't distinguish
+        final callType = "1"; // "1" = Audio, "2" = Video
+        
+        // Convert direction
+        String direction;
+        switch (callLog.callType) {
+          case CallType.incoming:
+            direction = "INCOMING";
+            break;
+          case CallType.outgoing:
+            direction = "OUTGOING";
+            break;
+          case CallType.missed:
+            direction = "INCOMING"; // Missed calls are technically incoming
+            break;
+          case CallType.rejected:
+            direction = "INCOMING"; // Rejected calls are technically incoming
+            break;
+          default:
+            direction = "INCOMING";
+        }
+        
+        return CallLogData(
+          number: callLog.number ?? '',
+          callType: callType,
+          direction: direction,
+          date: (callLog.timestamp ?? 0).toString(),
+          duration: (callLog.duration ?? 0).toString(),
+        );
+      }).where((callData) => callData.number.isNotEmpty).toList();
+
+      if (callLogsData.isEmpty) {
+        debugPrint('No valid call logs to upload (all missing phone numbers)');
+        return;
+      }
+
+      // Upload to server
+      final apiService = ApiService();
+      final response = await apiService.uploadCallLogsBulk(
+        owner: currentUser.id.toString(),
+        callList: callLogsData,
+      );
+
+      debugPrint('Bulk call logs upload successful: ${response.message}');
+      debugPrint('Created: ${response.created}, Skipped: ${response.skipped}, Total: ${response.totalProcessed}');
+
+      // Show success message to user
+      if (mounted) {
+        final successMessage = response.created > 0 
+            ? 'Call logs synced: ${response.created} uploaded successfully'
+            : 'All ${response.totalProcessed} call logs were already synced';
+            
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(successMessage),
+            backgroundColor: response.created > 0 ? Colors.green : Colors.blue,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+
+    } catch (e) {
+      debugPrint('Error uploading call logs in bulk: $e');
+      
+      // Show error message to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to sync call logs: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
