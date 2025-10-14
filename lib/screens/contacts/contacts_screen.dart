@@ -8,6 +8,8 @@ import '../../services/auth_state_manager.dart';
 import '../../services/api_service.dart';
 import '../../models/bulk_upload_models.dart';
 
+import '../sms/sms_screen.dart';
+
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
 
@@ -217,6 +219,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
+  void _openSMSScreen() {
+    debugPrint('Opening SMS screen...');
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const SMSScreen(),
+      ),
+    );
+  }
+
   void _filterContacts(String query) {
     setState(() {
       _searchQuery = query;
@@ -313,6 +325,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
         ),
       ),
       body: _buildBody(),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _openSMSScreen,
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        tooltip: 'View SMS Messages',
+        child: const Icon(Icons.message),
+      ),
     );
   }
 

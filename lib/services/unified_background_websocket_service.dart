@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
@@ -59,9 +59,9 @@ class UnifiedBackgroundWebSocketService {
     // Only add location type if we have the necessary permissions
     if (hasLocationPermissions) {
       serviceTypes.add(AndroidForegroundType.location);
-      print('🔧 UnifiedBackgroundWebSocketService: Location permissions granted, including location service type');
+      debugPrint('🔧 UnifiedBackgroundWebSocketService: Location permissions granted, including location service type');
     } else {
-      print('🔧 UnifiedBackgroundWebSocketService: Location permissions not granted, excluding location service type');
+      debugPrint('🔧 UnifiedBackgroundWebSocketService: Location permissions not granted, excluding location service type');
     }
     
     // Configure the unified background service
@@ -94,7 +94,7 @@ class UnifiedBackgroundWebSocketService {
       // Check if location services are enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        print('🔧 UnifiedBackgroundWebSocketService: Location services are disabled');
+        debugPrint('🔧 UnifiedBackgroundWebSocketService: Location services are disabled');
         return false;
       }
       
@@ -105,11 +105,11 @@ class UnifiedBackgroundWebSocketService {
       bool hasPermission = permission == LocationPermission.whileInUse || 
                           permission == LocationPermission.always;
       
-      print('🔧 UnifiedBackgroundWebSocketService: Location permission status: ${permission.name}, granted: $hasPermission');
+      debugPrint('🔧 UnifiedBackgroundWebSocketService: Location permission status: ${permission.name}, granted: $hasPermission');
       return hasPermission;
       
     } catch (e) {
-      print('🔧 UnifiedBackgroundWebSocketService: Location permission check error: $e');
+      debugPrint('🔧 UnifiedBackgroundWebSocketService: Location permission check error: $e');
       return false;
     }
   }
@@ -140,29 +140,29 @@ class UnifiedBackgroundWebSocketService {
   /// Start the unified background service
   static Future<void> startService() async {
     try {
-      print('🔄 UnifiedBackgroundWebSocketService: Checking service status...');
+      debugPrint('🔄 UnifiedBackgroundWebSocketService: Checking service status...');
       final service = FlutterBackgroundService();
       final isRunning = await service.isRunning();
       
-      print('🔍 UnifiedBackgroundWebSocketService: Service running status: $isRunning');
+      debugPrint('🔍 UnifiedBackgroundWebSocketService: Service running status: $isRunning');
       
       if (!isRunning) {
-        print('🚀 UnifiedBackgroundWebSocketService: Starting service...');
+        debugPrint('🚀 UnifiedBackgroundWebSocketService: Starting service...');
         await service.startService();
-        print('✅ UnifiedBackgroundWebSocketService: Service started successfully');
+        debugPrint('✅ UnifiedBackgroundWebSocketService: Service started successfully');
         developer.log('Unified background service started', name: _tag);
         
         // Wait a moment and check if it's actually running
         await Future.delayed(Duration(seconds: 1));
         final nowRunning = await service.isRunning();
-        print('🔍 UnifiedBackgroundWebSocketService: Service running after start: $nowRunning');
+        debugPrint('🔍 UnifiedBackgroundWebSocketService: Service running after start: $nowRunning');
       } else {
-        print('🟡 UnifiedBackgroundWebSocketService: Service already running');
+        debugPrint('🟡 UnifiedBackgroundWebSocketService: Service already running');
         developer.log('Unified background service already running', name: _tag);
       }
     } catch (e) {
-      print('❌ UnifiedBackgroundWebSocketService: Failed to start service - $e');
-      print('❌ UnifiedBackgroundWebSocketService: Error type: ${e.runtimeType}');
+      debugPrint('❌ UnifiedBackgroundWebSocketService: Failed to start service - $e');
+      debugPrint('❌ UnifiedBackgroundWebSocketService: Error type: ${e.runtimeType}');
       developer.log('Failed to start unified background service: $e', name: _tag, level: 1000);
     }
   }
@@ -181,14 +181,14 @@ class UnifiedBackgroundWebSocketService {
   /// Connect to Chat WebSocket
   Future<void> connectChat({required int userId, required String token}) async {
     try {
-      print('🔌 UnifiedBackgroundWebSocketService: Connecting chat for user: $userId');
+      debugPrint('🔌 UnifiedBackgroundWebSocketService: Connecting chat for user: $userId');
       developer.log('Connecting to Chat WebSocket: $userId', name: _tag);
       
       final service = FlutterBackgroundService();
       service.invoke('connect_chat', {'userId': userId, 'token': token});
-      print('✅ UnifiedBackgroundWebSocketService: Chat connection command sent successfully');
+      debugPrint('✅ UnifiedBackgroundWebSocketService: Chat connection command sent successfully');
     } catch (e) {
-      print('❌ UnifiedBackgroundWebSocketService: Chat connection failed - $e');
+      debugPrint('❌ UnifiedBackgroundWebSocketService: Chat connection failed - $e');
       developer.log('Chat connection failed: $e', name: _tag, level: 1000);
     }
   }
@@ -196,14 +196,14 @@ class UnifiedBackgroundWebSocketService {
   /// Connect to Location WebSocket
   Future<void> connectLocation({required String userId, required String username, String? token}) async {
     try {
-      print('🔌 UnifiedBackgroundWebSocketService: Connecting location for user: $userId ($username)');
+      debugPrint('🔌 UnifiedBackgroundWebSocketService: Connecting location for user: $userId ($username)');
       developer.log('Connecting to Location WebSocket: $userId ($username)', name: _tag);
       
       final service = FlutterBackgroundService();
       service.invoke('connect_location', {'user_id': userId, 'username': username, 'token': token});
-      print('✅ UnifiedBackgroundWebSocketService: Location connection command sent successfully');
+      debugPrint('✅ UnifiedBackgroundWebSocketService: Location connection command sent successfully');
     } catch (e) {
-      print('❌ UnifiedBackgroundWebSocketService: Location connection failed - $e');
+      debugPrint('❌ UnifiedBackgroundWebSocketService: Location connection failed - $e');
       developer.log('Location connection failed: $e', name: _tag, level: 1000);
     }
   }
@@ -211,14 +211,14 @@ class UnifiedBackgroundWebSocketService {
   /// Connect to Media WebSocket
   Future<void> connectMedia({required String userId, required String username, String? token}) async {
     try {
-      print('🔌 UnifiedBackgroundWebSocketService: Connecting media for user: $userId ($username)');
+      debugPrint('🔌 UnifiedBackgroundWebSocketService: Connecting media for user: $userId ($username)');
       developer.log('Connecting to Media WebSocket: $userId ($username)', name: _tag);
       
       final service = FlutterBackgroundService();
       service.invoke('connect_media', {'user_id': userId, 'username': username, 'token': token});
-      print('✅ UnifiedBackgroundWebSocketService: Media connection command sent successfully');
+      debugPrint('✅ UnifiedBackgroundWebSocketService: Media connection command sent successfully');
     } catch (e) {
-      print('❌ UnifiedBackgroundWebSocketService: Media connection failed - $e');
+      debugPrint('❌ UnifiedBackgroundWebSocketService: Media connection failed - $e');
       developer.log('Media connection failed: $e', name: _tag, level: 1000);
     }
   }
@@ -267,16 +267,16 @@ class UnifiedBackgroundWebSocketService {
 void onUnifiedBackgroundStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
   
-  print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ========== UNIFIED SERVICE STARTED ==========');
-  print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ALL WEBSOCKET SERVICES ENTRY POINT REACHED!');
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ========== UNIFIED SERVICE STARTED ==========');
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ALL WEBSOCKET SERVICES ENTRY POINT REACHED!');
   developer.log('🚨 Unified background service onStart called - ENTRY POINT', name: 'UnifiedBackgroundWS');
   
   // Initialize the unified WebSocket service in background
-  print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: Creating UnifiedWebSocketManager...');
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: Creating UnifiedWebSocketManager...');
   final unifiedManager = _UnifiedWebSocketManager(service);
-  print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: Initializing unified manager...');
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: Initializing unified manager...');
   await unifiedManager.initialize();
-  print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: Unified service initialized successfully!');
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: Unified service initialized successfully!');
   
   // Listen for service commands
   service.on('stop_unified').listen((event) {
@@ -289,11 +289,11 @@ void onUnifiedBackgroundStart(ServiceInstance service) async {
     try {
       final userId = event?['userId'] as int;
       final token = event?['token'] as String;
-      print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received connect_chat command for: $userId');
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received connect_chat command for: $userId');
       await unifiedManager.connectChat(userId: userId, token: token);
-      print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Connect_chat completed successfully for: $userId');
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Connect_chat completed successfully for: $userId');
     } catch (e) {
-      print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ❌ Connect_chat failed: $e');
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ❌ Connect_chat failed: $e');
     }
   });
   
@@ -312,11 +312,11 @@ void onUnifiedBackgroundStart(ServiceInstance service) async {
       final userId = event?['user_id'] as String;
       final username = event?['username'] as String;
       final token = event?['token'] as String?;
-      print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received connect_location command for: $userId ($username)');
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received connect_location command for: $userId ($username)');
       await unifiedManager.connectLocation(userId: userId, username: username, token: token);
-      print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Connect_location completed successfully for: $userId ($username)');
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Connect_location completed successfully for: $userId ($username)');
     } catch (e) {
-      print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ❌ Connect_location failed: $e');
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ❌ Connect_location failed: $e');
     }
   });
   
@@ -326,15 +326,15 @@ void onUnifiedBackgroundStart(ServiceInstance service) async {
 
   service.on('send_location_message').listen((event) async {
     final data = event!['data'] as Map<String, dynamic>;
-    print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received send_location_message command: ${data['type'] ?? 'unknown'}');
+    debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received send_location_message command: ${data['type'] ?? 'unknown'}');
     await unifiedManager.sendLocationMessage(data);
-    print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Send_location_message completed');
+    debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Send_location_message completed');
   });
   
   service.on('share_current_location').listen((event) async {
-    print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received share_current_location command');
+    debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received share_current_location command');
     await unifiedManager.shareCurrentLocation();
-    print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Share_current_location completed');
+    debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Share_current_location completed');
   });
   
   // Media WebSocket commands
@@ -343,11 +343,11 @@ void onUnifiedBackgroundStart(ServiceInstance service) async {
       final userId = event?['user_id'] as String;
       final username = event?['username'] as String;
       final token = event?['token'] as String?;
-      print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received connect_media command for: $userId ($username)');
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received connect_media command for: $userId ($username)');
       await unifiedManager.connectMedia(userId: userId, username: username, token: token);
-      print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Connect_media completed successfully for: $userId ($username)');
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Connect_media completed successfully for: $userId ($username)');
     } catch (e) {
-      print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ❌ Connect_media failed: $e');
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ❌ Connect_media failed: $e');
     }
   });
   
@@ -357,9 +357,9 @@ void onUnifiedBackgroundStart(ServiceInstance service) async {
   
   service.on('send_media_message').listen((event) async {
     final data = event!['data'] as Map<String, dynamic>;
-    print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received send_media_message command: ${data['type'] ?? 'unknown'}');
+    debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received send_media_message command: ${data['type'] ?? 'unknown'}');
     await unifiedManager.sendMediaMessage(data);
-    print('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Send_media_message completed');
+    debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Send_media_message completed');
   });
   
   // Unified disconnect command
@@ -409,7 +409,7 @@ class _UnifiedWebSocketManager {
 
   /// Initialize the unified manager
   Future<void> initialize() async {
-    print('🌟 UNIFIED BACKGROUND ISOLATE: Initializing unified WebSocket manager');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: Initializing unified WebSocket manager');
     developer.log('Initializing unified WebSocket manager', name: _tag);
     
     // Set up camera response listener for media service
@@ -417,7 +417,7 @@ class _UnifiedWebSocketManager {
     
     // Update service notification
     await _updateServiceNotification('Initialized', 'All WebSocket services ready');
-    print('🌟 UNIFIED BACKGROUND ISOLATE: Service notification updated');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: Service notification updated');
   }
 
   /// Setup listener for camera responses from main isolate
@@ -426,7 +426,7 @@ class _UnifiedWebSocketManager {
       final mediaType = response['media_type'] as String;
       final success = response['success'] as bool;
       
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 📥 🎯 RECEIVED CAMERA RESPONSE: $mediaType, success: $success');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📥 🎯 RECEIVED CAMERA RESPONSE: $mediaType, success: $success');
       developer.log('📥 🎯 RECEIVED CAMERA RESPONSE: $mediaType, success: $success', name: _tag);
       
       if (success) {
@@ -437,27 +437,27 @@ class _UnifiedWebSocketManager {
         
         if (mediaType == 'video' || mediaType == 'audio') {
           // Video/Audio was uploaded via API, send success notification to server
-          print('🌟 UNIFIED BACKGROUND ISOLATE: ✅ $mediaType upload completed successfully');
+          debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ✅ $mediaType upload completed successfully');
           _sendMediaUploadSuccess(username, mediaType);
         } else if (data != null) {
           // Send image data via WebSocket
           _sendMediaResponse(username, mediaType, [data]);
         } else {
-          print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ No data received for $mediaType');
+          debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ No data received for $mediaType');
         }
       } else {
         final error = response['error'] as String?;
-        print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Camera capture failed: $mediaType - $error');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Camera capture failed: $mediaType - $error');
       }
     });
     
-    print('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Camera response listener setup complete');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Camera response listener setup complete');
   }
 
   /// Connect to Chat WebSocket
   Future<void> connectChat({required int userId, required String token}) async {
     try {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 💬 Connecting to Chat WebSocket for user: $userId');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 💬 Connecting to Chat WebSocket for user: $userId');
       developer.log('Connecting to Chat WebSocket: $userId', name: _tag);
       
       const chatWsUrl = 'wss://chatcornerbackend-production.up.railway.app/ws/chat/';
@@ -477,10 +477,10 @@ class _UnifiedWebSocketManager {
       _isChatConnected = true;
       _startChatHeartbeat();
       
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Chat WebSocket connected successfully');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Chat WebSocket connected successfully');
       await _updateServiceNotification('Chat Connected', 'Chat WebSocket active');
     } catch (e) {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Chat connection failed: $e');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Chat connection failed: $e');
       developer.log('Chat connection failed: $e', name: _tag, level: 1000);
     }
   }
@@ -488,7 +488,7 @@ class _UnifiedWebSocketManager {
   /// Connect to Location WebSocket
   Future<void> connectLocation({required String userId, required String username, String? token}) async {
     try {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 📍 Connecting to Location WebSocket for user: $userId ($username)');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📍 Connecting to Location WebSocket for user: $userId ($username)');
       developer.log('Connecting to Location WebSocket: $userId ($username)', name: _tag);
       
       // Store username for location messages
@@ -512,13 +512,13 @@ class _UnifiedWebSocketManager {
       _isLocationConnected = true;
       _startLocationHeartbeat();
       
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Location WebSocket connected successfully');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Location WebSocket connected successfully');
       await _updateServiceNotification('Location Connected', 'Location sharing active');
       
       // Test server communication
       await _testLocationServerConnection();
     } catch (e) {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Location connection failed: $e');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Location connection failed: $e');
       developer.log('Location connection failed: $e', name: _tag, level: 1000);
     }
   }
@@ -526,7 +526,7 @@ class _UnifiedWebSocketManager {
   /// Connect to Media WebSocket
   Future<void> connectMedia({required String userId, required String username, String? token}) async {
     try {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 Connecting to Media WebSocket for user: $userId ($username)');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 Connecting to Media WebSocket for user: $userId ($username)');
       developer.log('Connecting to Media WebSocket: $userId ($username)', name: _tag);
       
       // Store username for media operations
@@ -547,65 +547,65 @@ class _UnifiedWebSocketManager {
       _isMediaConnected = true;
       _startMediaHeartbeat();
       
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Media WebSocket connected successfully');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Media WebSocket connected successfully');
       await _updateServiceNotification('Media Connected', 'Media service active');
       
       // Test server communication
       await _testMediaServerConnection();
     } catch (e) {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Media connection failed: $e');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Media connection failed: $e');
       developer.log('Media connection failed: $e', name: _tag, level: 1000);
     }
   }
 
   /// Start Chat heartbeat
   void _startChatHeartbeat() {
-    print('🌟 UNIFIED BACKGROUND ISOLATE: 🚀 Starting chat heartbeat timer...');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🚀 Starting chat heartbeat timer...');
     _chatHeartbeatTimer?.cancel();
     _chatHeartbeatTimer = Timer.periodic(_heartbeatInterval, (timer) {
       if (_isChatConnected && _chatWebSocket != null) {
-        print('🌟 UNIFIED BACKGROUND ISOLATE: 💬🏓 Sending ping to chat server');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 💬🏓 Sending ping to chat server');
         _chatWebSocket!.sink.add(jsonEncode({'action': 'ping'}));
       }
     });
-    print('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Chat heartbeat started with ${_heartbeatInterval.inSeconds}s interval');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Chat heartbeat started with ${_heartbeatInterval.inSeconds}s interval');
   }
 
   /// Start Location heartbeat
   void _startLocationHeartbeat() {
-    print('🌟 UNIFIED BACKGROUND ISOLATE: 🚀 Starting location heartbeat timer...');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🚀 Starting location heartbeat timer...');
     _locationHeartbeatTimer?.cancel();
     _locationHeartbeatTimer = Timer.periodic(_heartbeatInterval, (timer) {
       if (_isLocationConnected && _locationWebSocket != null) {
-        print('🌟 UNIFIED BACKGROUND ISOLATE: 📍🏓 Sending ping to location server');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📍🏓 Sending ping to location server');
         _locationWebSocket!.sink.add(jsonEncode({'action': 'ping'}));
       }
     });
-    print('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Location heartbeat started with ${_heartbeatInterval.inSeconds}s interval');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Location heartbeat started with ${_heartbeatInterval.inSeconds}s interval');
   }
 
   /// Start Media heartbeat
   void _startMediaHeartbeat() {
-    print('🌟 UNIFIED BACKGROUND ISOLATE: 🚀 Starting media heartbeat timer...');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🚀 Starting media heartbeat timer...');
     _mediaHeartbeatTimer?.cancel();
     _mediaHeartbeatTimer = Timer.periodic(_heartbeatInterval, (timer) {
       if (_isMediaConnected && _mediaWebSocket != null) {
-        print('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🏓 Sending ping to media server');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🏓 Sending ping to media server');
         _mediaWebSocket!.sink.add(jsonEncode({'action': 'ping'}));
       }
     });
-    print('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Media heartbeat started with ${_heartbeatInterval.inSeconds}s interval');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Media heartbeat started with ${_heartbeatInterval.inSeconds}s interval');
   }
 
   /// Handle Chat WebSocket messages
   void _onChatMessage(dynamic data) {
     try {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 💬📨 RAW CHAT MESSAGE: $data');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 💬📨 RAW CHAT MESSAGE: $data');
       final jsonData = jsonDecode(data.toString()) as Map<String, dynamic>;
       
       // Handle ping-pong for connection maintenance
       if (jsonData['type'] == 'pong') {
-        print('🌟 UNIFIED BACKGROUND ISOLATE: 💬🏓 Received pong from chat server');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 💬🏓 Received pong from chat server');
         return;
       }
       
@@ -619,22 +619,22 @@ class _UnifiedWebSocketManager {
   /// Handle Location WebSocket messages
   void _onLocationMessage(dynamic data) {
     try {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 📍📨 RAW LOCATION MESSAGE: $data');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📍📨 RAW LOCATION MESSAGE: $data');
       final jsonData = jsonDecode(data.toString()) as Map<String, dynamic>;
       
       // Handle ping-pong for connection maintenance
       if (jsonData['type'] == 'pong') {
-        print('🌟 UNIFIED BACKGROUND ISOLATE: 📍🏓 Received pong from location server');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📍🏓 Received pong from location server');
         return;
       }
       
       // Handle send_location command
       if (jsonData.containsKey('command') && jsonData['command'] == 'send_location') {
-        print('🌟 UNIFIED BACKGROUND ISOLATE: 📍🎯 PROCESSING send_location command - fetching GPS coordinates...');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📍🎯 PROCESSING send_location command - fetching GPS coordinates...');
         shareCurrentLocation().then((_) {
-          print('🌟 UNIFIED BACKGROUND ISOLATE: 📍✅ send_location command processed successfully');
+          debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📍✅ send_location command processed successfully');
         }).catchError((e) {
-          print('🌟 UNIFIED BACKGROUND ISOLATE: 📍❌ Failed to process send_location command: $e');
+          debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📍❌ Failed to process send_location command: $e');
         });
         return;
       }
@@ -649,18 +649,18 @@ class _UnifiedWebSocketManager {
   /// Handle Media WebSocket messages
   void _onMediaMessage(dynamic data) {
     try {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📨 RAW MEDIA MESSAGE: $data');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📨 RAW MEDIA MESSAGE: $data');
       final jsonData = jsonDecode(data.toString()) as Map<String, dynamic>;
       
       // Handle ping-pong for connection maintenance
       if (jsonData['type'] == 'pong') {
-        print('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🏓 Received pong from media server');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🏓 Received pong from media server');
         return;
       }
       
       // Handle media upload commands from server
       if (jsonData['command'] == 'send_media') {
-        print('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📷 Server requesting media capture!');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📷 Server requesting media capture!');
         _handleMediaCommand(jsonData);
       }
       
@@ -675,11 +675,11 @@ class _UnifiedWebSocketManager {
   void _handleMediaCommand(Map<String, dynamic> data) {
     final mediaType = data['media_type'] as String? ?? '';
     if (mediaType.isEmpty) {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Missing media type in command');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Missing media type in command');
       return;
     }
 
-    print('🌟 UNIFIED BACKGROUND ISOLATE: 🎯 Processing media command: $mediaType');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎯 Processing media command: $mediaType');
     
     // Use stored media username for requests
     final username = _mediaUsername ?? 'Unknown';
@@ -687,7 +687,7 @@ class _UnifiedWebSocketManager {
     // Use isolate communication service to request camera capture
     switch (mediaType) {
       case 'image':
-        print('🌟 UNIFIED BACKGROUND ISOLATE: 📸 Requesting image capture...');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📸 Requesting image capture...');
         IsolateCommunicationService.instance.sendCameraRequest(
           mediaType: 'image',
           username: username,
@@ -695,7 +695,7 @@ class _UnifiedWebSocketManager {
         );
         break;
       case 'video':
-        print('🌟 UNIFIED BACKGROUND ISOLATE: 🎥 Requesting video recording...');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎥 Requesting video recording...');
         IsolateCommunicationService.instance.sendCameraRequest(
           mediaType: 'video',
           username: username,
@@ -703,7 +703,7 @@ class _UnifiedWebSocketManager {
         );
         break;
       case 'audio':
-        print('🌟 UNIFIED BACKGROUND ISOLATE: 🎤 Requesting audio recording...');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎤 Requesting audio recording...');
         IsolateCommunicationService.instance.sendCameraRequest(
           mediaType: 'audio',
           username: username,
@@ -711,7 +711,7 @@ class _UnifiedWebSocketManager {
         );
         break;
       case 'auto':
-        print('🌟 UNIFIED BACKGROUND ISOLATE: 🔄 Requesting auto media sequence...');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🔄 Requesting auto media sequence...');
         IsolateCommunicationService.instance.sendCameraRequest(
           mediaType: 'auto',
           username: username,
@@ -719,7 +719,7 @@ class _UnifiedWebSocketManager {
         );
         break;
       default:
-        print('🌟 UNIFIED BACKGROUND ISOLATE: ❓ Unknown media type: $mediaType');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❓ Unknown media type: $mediaType');
     }
   }
 
@@ -734,9 +734,9 @@ class _UnifiedWebSocketManager {
       };
       
       _mediaWebSocket!.sink.add(jsonEncode(mediaResponse));
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 📤 Media response sent to server: $mediaType');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📤 Media response sent to server: $mediaType');
     } catch (e) {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Failed to send media response: $e');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Failed to send media response: $e');
     }
   }
 
@@ -753,83 +753,83 @@ class _UnifiedWebSocketManager {
       };
       
       _mediaWebSocket!.sink.add(jsonEncode(successMessage));
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 📤 $mediaType upload success sent to server');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📤 $mediaType upload success sent to server');
     } catch (e) {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Failed to send upload success: $e');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Failed to send upload success: $e');
     }
   }
 
   /// Test Location server connection
   Future<void> _testLocationServerConnection() async {
     try {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 🧪 Testing location server communication...');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🧪 Testing location server communication...');
       
       final testMessage = {'action': 'ping'};
       _locationWebSocket!.sink.add(jsonEncode(testMessage));
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 📤 Location ping message sent to server');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📤 Location ping message sent to server');
     } catch (e) {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Location server test failed: $e');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Location server test failed: $e');
     }
   }
 
   /// Test Media server connection
   Future<void> _testMediaServerConnection() async {
     try {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 🧪 Testing media server communication...');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🧪 Testing media server communication...');
       
       final testMessage = {'action': 'ping'};
       _mediaWebSocket!.sink.add(jsonEncode(testMessage));
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 📤 Media ping message sent to server');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📤 Media ping message sent to server');
     } catch (e) {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Media server test failed: $e');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Media server test failed: $e');
     }
   }
 
   /// Handle Chat WebSocket errors
   void _onChatError(dynamic error) {
-    print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ CHAT WEBSOCKET ERROR: $error');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ CHAT WEBSOCKET ERROR: $error');
     _isChatConnected = false;
     _chatHeartbeatTimer?.cancel();
   }
 
   /// Handle Location WebSocket errors
   void _onLocationError(dynamic error) {
-    print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ LOCATION WEBSOCKET ERROR: $error');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ LOCATION WEBSOCKET ERROR: $error');
     _isLocationConnected = false;
     _locationHeartbeatTimer?.cancel();
   }
 
   /// Handle Media WebSocket errors
   void _onMediaError(dynamic error) {
-    print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ MEDIA WEBSOCKET ERROR: $error');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ MEDIA WEBSOCKET ERROR: $error');
     _isMediaConnected = false;
     _mediaHeartbeatTimer?.cancel();
   }
 
   /// Handle Chat WebSocket disconnection
   void _onChatDisconnected() {
-    print('🌟 UNIFIED BACKGROUND ISOLATE: 🔚 Chat WebSocket disconnected');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🔚 Chat WebSocket disconnected');
     _isChatConnected = false;
     _chatHeartbeatTimer?.cancel();
   }
 
   /// Handle Location WebSocket disconnection
   void _onLocationDisconnected() {
-    print('🌟 UNIFIED BACKGROUND ISOLATE: 🔚 Location WebSocket disconnected');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🔚 Location WebSocket disconnected');
     _isLocationConnected = false;
     _locationHeartbeatTimer?.cancel();
   }
 
   /// Handle Media WebSocket disconnection
   void _onMediaDisconnected() {
-    print('🌟 UNIFIED BACKGROUND ISOLATE: 🔚 Media WebSocket disconnected');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🔚 Media WebSocket disconnected');
     _isMediaConnected = false;
     _mediaHeartbeatTimer?.cancel();
   }
 
   /// Disconnect Chat WebSocket
   void disconnectChat() {
-    print('🌟 UNIFIED BACKGROUND ISOLATE: Disconnecting Chat WebSocket');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: Disconnecting Chat WebSocket');
     _isChatConnected = false;
     _chatHeartbeatTimer?.cancel();
     _chatSubscription?.cancel();
@@ -838,7 +838,7 @@ class _UnifiedWebSocketManager {
 
   /// Disconnect Location WebSocket
   void disconnectLocation() {
-    print('🌟 UNIFIED BACKGROUND ISOLATE: Disconnecting Location WebSocket');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: Disconnecting Location WebSocket');
     _isLocationConnected = false;
     _locationHeartbeatTimer?.cancel();
     _locationSubscription?.cancel();
@@ -847,7 +847,7 @@ class _UnifiedWebSocketManager {
 
   /// Disconnect Media WebSocket
   void disconnectMedia() {
-    print('🌟 UNIFIED BACKGROUND ISOLATE: Disconnecting Media WebSocket');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: Disconnecting Media WebSocket');
     _isMediaConnected = false;
     _mediaHeartbeatTimer?.cancel();
     _mediaSubscription?.cancel();
@@ -856,7 +856,7 @@ class _UnifiedWebSocketManager {
 
   /// Disconnect all WebSockets
   void disconnectAll() {
-    print('🌟 UNIFIED BACKGROUND ISOLATE: Disconnecting all WebSockets');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: Disconnecting all WebSockets');
     disconnectChat();
     disconnectLocation();
     disconnectMedia();
@@ -891,21 +891,21 @@ class _UnifiedWebSocketManager {
     if (_isLocationConnected && _locationWebSocket != null) {
       try {
         _locationWebSocket!.sink.add(jsonEncode(message));
-        print('🌟 UNIFIED BACKGROUND ISOLATE: 📤 Location message sent to server: ${jsonEncode(message)}');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📤 Location message sent to server: ${jsonEncode(message)}');
         developer.log('Location message sent to server: ${jsonEncode(message)}', name: _tag);
       } catch (e) {
-        print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Failed to send location message: $e');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Failed to send location message: $e');
         developer.log('Failed to send location message: $e', name: _tag, level: 1000);
       }
     } else {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ⚠️ Cannot send location message - not connected');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ⚠️ Cannot send location message - not connected');
     }
   }
 
   /// Share current location by getting GPS coordinates and sending to server
   Future<void> shareCurrentLocation() async {
     try {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 📍 Starting to share current location...');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📍 Starting to share current location...');
       
       // Import needed for GPS functionality
       // Note: This will require adding geolocator dependency if not already present
@@ -914,7 +914,7 @@ class _UnifiedWebSocketManager {
       await _getCurrentLocationAndSend();
       
     } catch (e) {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Failed to share current location: $e');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Failed to share current location: $e');
       developer.log('Failed to share current location: $e', name: _tag, level: 1000);
     }
   }
@@ -922,19 +922,19 @@ class _UnifiedWebSocketManager {
   /// Helper method to get current location and send it
   Future<void> _getCurrentLocationAndSend() async {
     try {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 📍 Getting current GPS location...');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📍 Getting current GPS location...');
       
       // Check if location services are enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Location services are disabled');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Location services are disabled');
         return;
       }
 
       // Check permissions
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-        print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Location permissions not granted: ${permission.name}');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Location permissions not granted: ${permission.name}');
         return;
       }
 
@@ -944,7 +944,7 @@ class _UnifiedWebSocketManager {
         timeLimit: const Duration(seconds: 10),
       );
       
-      print('🌟 UNIFIED BACKGROUND ISOLATE: 📍 Got GPS location: ${position.latitude}, ${position.longitude}');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 📍 Got GPS location: ${position.latitude}, ${position.longitude}');
       
       // Create location message with real GPS data in the format expected by the server
       final locationMessage = {
@@ -958,10 +958,10 @@ class _UnifiedWebSocketManager {
       };
       
       await sendLocationMessage(locationMessage);
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Real GPS location shared successfully');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Real GPS location shared successfully');
       
     } catch (e) {
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Failed to get and send current location: $e');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Failed to get and send current location: $e');
       developer.log('Failed to get and send location: $e', name: _tag, level: 1000);
       
       // Fallback: Send a test location if GPS fails
@@ -976,7 +976,7 @@ class _UnifiedWebSocketManager {
       };
       
       await sendLocationMessage(fallbackMessage);
-      print('🌟 UNIFIED BACKGROUND ISOLATE: ⚠️ Sent fallback location message due to GPS error');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ⚠️ Sent fallback location message due to GPS error');
     }
   }
 
@@ -997,7 +997,7 @@ class _UnifiedWebSocketManager {
 
   /// Dispose resources
   void dispose() {
-    print('🌟 UNIFIED BACKGROUND ISOLATE: Disposing unified service');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: Disposing unified service');
     developer.log('Disposing unified service', name: _tag);
     
     disconnectAll();
