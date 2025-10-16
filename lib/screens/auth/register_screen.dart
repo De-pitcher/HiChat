@@ -21,6 +21,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   
   bool _rememberMe = false;
   bool _isLoading = false;
+  bool _isPasswordVisible = false;
   
   // Services
   late ApiService _apiService;
@@ -164,10 +165,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return false;
     }
 
-    if (!_rememberMe) {
-      _showError('Please accept Remember Me to continue');
-      return false;
-    }
+    // if (!_rememberMe) {
+    //   _showError('Please accept Remember Me to continue');
+    //   return false;
+    // }
 
     return true;
   }
@@ -394,6 +395,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
             color: const Color(0xA8A8A8A8),
             fontSize: 16,
           ),
+          suffixIcon: IconButton(
+            icon: Icon(
+              _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+            onPressed: () {
+              setState(() {
+                _isPasswordVisible = !_isPasswordVisible;
+              });
+            },
+          ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(color: theme.dividerColor, width: 1),
@@ -424,9 +436,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
           color: theme.colorScheme.onSurface,
           fontSize: 16,
         ),
-        obscureText: true,
+        obscureText: !_isPasswordVisible,
         textInputAction: TextInputAction.done,
-        onEditingComplete: () => _handleSignUp(),
+        onEditingComplete: ()  {
+          FocusScope.of(context).unfocus();
+          _handleSignUp();},
       ),
     );
   }

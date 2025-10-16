@@ -5,6 +5,8 @@ import 'dart:io';
 import 'dart:convert';
 import '../../constants/app_constants.dart';
 import '../../services/api_service.dart';
+import '../../services/api_exceptions.dart';
+import '../../services/auth_state_manager.dart';
 import '../../models/user.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
@@ -20,38 +22,44 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final TextEditingController _dobController = TextEditingController();
   final TextEditingController _aboutController = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  
+
   bool _isLoading = false;
   File? _selectedImage;
   final ImagePicker _imagePicker = ImagePicker();
-  
+
   // Services
   late ApiService _apiService;
-  
+  late AuthStateManager _authStateManager;
+
   // Arguments passed from registration or OTP screen
   String? _email;
   String? _password;
   String? _phoneNumber;
   String? _userToken;
+  String? _username;
   bool _isProfileUpdate = false;
 
   @override
   void initState() {
     super.initState();
     _apiService = ApiService();
+    _authStateManager = AuthStateManager();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Get arguments passed from registration screen or OTP screen
-    final arguments = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final arguments =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     if (arguments != null) {
       _email = arguments['email'] as String?;
       _password = arguments['password'] as String?;
       _phoneNumber = arguments['phone_number'] as String?;
       _userToken = arguments['user_token'] as String?;
       _isProfileUpdate = arguments['is_profile_update'] as bool? ?? false;
+      _username = arguments['username'] as String?;
+      _nicknameController.text = _username ?? '';
     }
   }
 
@@ -73,7 +81,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         maxHeight: 1024,
         imageQuality: 80,
       );
-      
+
       if (image != null) {
         setState(() {
           _selectedImage = File(image.path);
@@ -101,9 +109,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         );
       },
     );
-    
+
     if (picked != null) {
-      final formattedDate = '${picked.year.toString().padLeft(4, '0')}-'
+      final formattedDate =
+          '${picked.year.toString().padLeft(4, '0')}-'
           '${picked.month.toString().padLeft(2, '0')}-'
           '${picked.day.toString().padLeft(2, '0')}';
       setState(() {
@@ -154,7 +163,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       }
     } catch (e) {
       if (mounted) {
-        _showError('Signup failed: $e');
+        _handleError(e);
       }
     } finally {
       if (mounted) {
@@ -165,11 +174,18 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     }
   }
 
-  Future<void> _handleProfileUpdate(String name, String nickname, String about, String dob, String? base64Image) async {
+  Future<void> _handleProfileUpdate(
+    String name,
+    String nickname,
+    String about,
+    String dob,
+    String? base64Image,
+  ) async {
     // Profile update flow - update existing user profile
     final profileUpdateRequest = ProfileUpdateRequest(
       username: nickname,
       name: name,
+      email: _email,
       about: about,
       dateOfBirth: dob,
       image: base64Image,
@@ -177,15 +193,25 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
 
     // Log profile update attempt (debugging)
-    debugPrint('Profile update attempt - Username: $nickname, Name: $name, Has Image: ${base64Image != null}');
+    debugPrint(
+      'Profile update attempt - Username: $nickname, Name: $name, Has Image: ${base64Image != null}',
+    );
 
     // Make API call to update user profile
-    final updatedUser = await _apiService.updateUserProfile(_userToken!, profileUpdateRequest);
+    final updatedUser = await _apiService.updateUserProfile(
+      _userToken!,
+      profileUpdateRequest,
+    );
+
+    // Update authentication state with the completed profile
+    await _authStateManager.handleSuccessfulLogin(updatedUser);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Welcome ${updatedUser.username}! Profile completed successfully.'),
+          content: Text(
+            'Welcome ${updatedUser.username}! Profile completed successfully.',
+          ),
           backgroundColor: Theme.of(context).colorScheme.primary,
           duration: const Duration(seconds: 2),
         ),
@@ -200,7 +226,13 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     }
   }
 
-  Future<void> _handleInitialSignup(String name, String nickname, String about, String dob, String? base64Image) async {
+  Future<void> _handleInitialSignup(
+    String name,
+    String nickname,
+    String about,
+    String dob,
+    String? base64Image,
+  ) async {
     // Initial signup flow - create new account (from OTP screen for new users)
     final signupRequest = SignupRequest(
       email: _email,
@@ -213,16 +245,23 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       profileImage: base64Image,
     );
 
-    // Log signup attempt (debugging)  
-    debugPrint('Initial signup attempt - Phone: $_phoneNumber, Username: $nickname, Name: $name');
+    // Log signup attempt (debugging)
+    debugPrint(
+      'Initial signup attempt - Phone: $_phoneNumber, Username: $nickname, Name: $name',
+    );
 
     // Make API call to create user
     final signupResponse = await _apiService.signupUser(signupRequest);
 
+    // Update authentication state with the new user
+    await _authStateManager.handleSuccessfulLogin(signupResponse.user);
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Welcome ${signupResponse.user.username}! Account created successfully.'),
+          content: Text(
+            'Welcome ${signupResponse.user.username}! Account created successfully.',
+          ),
           backgroundColor: Theme.of(context).colorScheme.primary,
           duration: const Duration(seconds: 2),
         ),
@@ -282,6 +321,30 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     FocusScope.of(context).requestFocus(FocusNode());
   }
 
+  void _handleError(dynamic error) {
+    String userMessage;
+
+    if (error is ValidationException) {
+      // Show user-friendly validation error message
+      userMessage = error.userMessage;
+    } else if (error is AuthenticationException) {
+      userMessage = 'Authentication failed. Please try again.';
+    } else if (error is NetworkException) {
+      userMessage =
+          'Network error. Please check your connection and try again.';
+    } else if (error is ServerException) {
+      userMessage = 'Server error. Please try again later.';
+    } else if (error is ApiException) {
+      userMessage = error.message;
+    } else {
+      // Generic error for unknown exceptions
+      userMessage = 'Profile setup failed. Please try again.';
+      debugPrint('Unexpected error in profile setup: $error');
+    }
+
+    _showError(userMessage);
+  }
+
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -295,7 +358,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: _buildBody(theme),
@@ -368,10 +431,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: theme.colorScheme.surface,
-              border: Border.all(
-                color: theme.dividerColor,
-                width: 2,
-              ),
+              border: Border.all(color: theme.dividerColor, width: 2),
             ),
             child: ClipOval(
               child: _selectedImage != null
@@ -421,10 +481,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         controller: _nameController,
         decoration: InputDecoration(
           hintText: 'Name',
-          hintStyle: TextStyle(
-            color: const Color(0xA8A8A8A8),
-            fontSize: 16,
-          ),
+          hintStyle: TextStyle(color: const Color(0xA8A8A8A8), fontSize: 16),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(color: theme.dividerColor, width: 1),
@@ -445,16 +502,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(color: theme.colorScheme.error, width: 2),
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
           filled: true,
-          fillColor: theme.brightness == Brightness.dark 
-            ? theme.colorScheme.surface.withValues(alpha: 0.8)
-            : theme.colorScheme.surface,
+          fillColor: theme.brightness == Brightness.dark
+              ? theme.colorScheme.surface.withValues(alpha: 0.8)
+              : theme.colorScheme.surface,
         ),
-        style: TextStyle(
-          color: theme.colorScheme.onSurface,
-          fontSize: 16,
-        ),
+        style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16),
         textInputAction: TextInputAction.next,
         onEditingComplete: () => FocusScope.of(context).nextFocus(),
       ),
@@ -468,10 +525,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         controller: _nicknameController,
         decoration: InputDecoration(
           hintText: 'Nickname',
-          hintStyle: TextStyle(
-            color: const Color(0xA8A8A8A8),
-            fontSize: 16,
-          ),
+          hintStyle: TextStyle(color: const Color(0xA8A8A8A8), fontSize: 16),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(color: theme.dividerColor, width: 1),
@@ -492,16 +546,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(color: theme.colorScheme.error, width: 2),
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
           filled: true,
-          fillColor: theme.brightness == Brightness.dark 
-            ? theme.colorScheme.surface.withValues(alpha: 0.8)
-            : theme.colorScheme.surface,
+          fillColor: theme.brightness == Brightness.dark
+              ? theme.colorScheme.surface.withValues(alpha: 0.8)
+              : theme.colorScheme.surface,
         ),
-        style: TextStyle(
-          color: theme.colorScheme.onSurface,
-          fontSize: 16,
-        ),
+        style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16),
         textInputAction: TextInputAction.next,
         onEditingComplete: () => FocusScope.of(context).nextFocus(),
       ),
@@ -515,10 +569,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         controller: _dobController,
         decoration: InputDecoration(
           hintText: 'Date Of Birth',
-          hintStyle: TextStyle(
-            color: const Color(0xA8A8A8A8),
-            fontSize: 16,
-          ),
+          hintStyle: TextStyle(color: const Color(0xA8A8A8A8), fontSize: 16),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(color: theme.dividerColor, width: 1),
@@ -539,16 +590,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(color: theme.colorScheme.error, width: 2),
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
           filled: true,
-          fillColor: theme.brightness == Brightness.dark 
-            ? theme.colorScheme.surface.withValues(alpha: 0.8)
-            : theme.colorScheme.surface,
+          fillColor: theme.brightness == Brightness.dark
+              ? theme.colorScheme.surface.withValues(alpha: 0.8)
+              : theme.colorScheme.surface,
         ),
-        style: TextStyle(
-          color: theme.colorScheme.onSurface,
-          fontSize: 16,
-        ),
+        style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16),
         readOnly: true,
         onTap: _selectDateOfBirth,
       ),
@@ -562,10 +613,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         controller: _aboutController,
         decoration: InputDecoration(
           hintText: 'About Us',
-          hintStyle: TextStyle(
-            color: const Color(0xA8A8A8A8),
-            fontSize: 16,
-          ),
+          hintStyle: TextStyle(color: const Color(0xA8A8A8A8), fontSize: 16),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(color: theme.dividerColor, width: 1),
@@ -586,18 +634,21 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(color: theme.colorScheme.error, width: 2),
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
           filled: true,
-          fillColor: theme.brightness == Brightness.dark 
-            ? theme.colorScheme.surface.withValues(alpha: 0.8)
-            : theme.colorScheme.surface,
+          fillColor: theme.brightness == Brightness.dark
+              ? theme.colorScheme.surface.withValues(alpha: 0.8)
+              : theme.colorScheme.surface,
         ),
-        style: TextStyle(
-          color: theme.colorScheme.onSurface,
-          fontSize: 16,
-        ),
+        style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16),
         textInputAction: TextInputAction.done,
-        onEditingComplete: () => _handleContinue(),
+        onEditingComplete: () {
+          FocusScope.of(context).unfocus();
+          _handleContinue();
+        },
       ),
     );
   }
@@ -615,7 +666,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             borderRadius: BorderRadius.circular(26),
           ),
           elevation: 0,
-          disabledBackgroundColor: theme.colorScheme.primary.withValues(alpha: 0.6),
+          disabledBackgroundColor: theme.colorScheme.primary.withValues(
+            alpha: 0.6,
+          ),
         ),
         child: _isLoading
             ? const SizedBox(

@@ -97,9 +97,31 @@ class ApiService {
       case 400:
         final errorData = _parseErrorResponse(response);
         debugPrint('Validation error data: $errorData');
+        
+        // Extract user-friendly messages from validation errors
+        String userMessage = errorData['message'] ?? 'Invalid login credentials';
+        final errors = errorData['errors'] as Map<String, dynamic>?;
+        
+        if (errors != null && errors.isNotEmpty) {
+          // Create user-friendly error messages
+          final List<String> errorMessages = [];
+          
+          errors.forEach((field, messages) {
+            if (messages is List && messages.isNotEmpty) {
+              final fieldName = _formatFieldName(field);
+              final errorMsg = messages.first.toString();
+              errorMessages.add('$fieldName: $errorMsg');
+            }
+          });
+          
+          if (errorMessages.isNotEmpty) {
+            userMessage = errorMessages.join('\n');
+          }
+        }
+        
         throw ValidationException(
-          errorData['message'] ?? 'Invalid login credentials',
-          validationErrors: errorData['errors'],
+          userMessage,
+          validationErrors: errors,
           statusCode: 400,
         );
       
@@ -127,7 +149,31 @@ class ApiService {
   /// Parse error response body
   Map<String, dynamic> _parseErrorResponse(http.Response response) {
     try {
-      return json.decode(response.body) as Map<String, dynamic>;
+      final decoded = json.decode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        // Check if this is a validation errors object (like {"email": ["error"], "username": ["error"]})
+        if (decoded.containsKey('message') || decoded.containsKey('errors')) {
+          // Standard error response format
+          return decoded;
+        } else if (decoded.entries.every((entry) => entry.value is List)) {
+          // This looks like a validation errors object where each key maps to a list of errors
+          return {
+            'message': 'Validation failed',
+            'errors': decoded,
+          };
+        } else {
+          // Unknown format, wrap it
+          return {
+            'message': decoded['detail'] ?? decoded['error'] ?? 'Server error occurred',
+            'errors': decoded,
+          };
+        }
+      } else {
+        return {
+          'message': decoded.toString(),
+          'errors': null,
+        };
+      }
     } catch (e) {
       return {
         'message': 'Server error occurred',
@@ -160,9 +206,31 @@ class ApiService {
       case 400:
         final errorData = _parseErrorResponse(response);
         debugPrint('Google Sign-In validation error: $errorData');
+        
+        // Extract user-friendly messages from validation errors
+        String userMessage = errorData['message'] ?? 'Invalid Google Sign-In data';
+        final errors = errorData['errors'] as Map<String, dynamic>?;
+        
+        if (errors != null && errors.isNotEmpty) {
+          // Create user-friendly error messages
+          final List<String> errorMessages = [];
+          
+          errors.forEach((field, messages) {
+            if (messages is List && messages.isNotEmpty) {
+              final fieldName = _formatFieldName(field);
+              final errorMsg = messages.first.toString();
+              errorMessages.add('$fieldName: $errorMsg');
+            }
+          });
+          
+          if (errorMessages.isNotEmpty) {
+            userMessage = errorMessages.join('\n');
+          }
+        }
+        
         throw ValidationException(
-          errorData['message'] ?? 'Invalid Google Sign-In data',
-          validationErrors: errorData['errors'],
+          userMessage,
+          validationErrors: errors,
           statusCode: 400,
         );
       
@@ -358,9 +426,31 @@ class ApiService {
       case 400:
         final errorData = _parseErrorResponse(response);
         debugPrint('Signup validation error: $errorData');
+        
+        // Extract user-friendly messages from validation errors
+        String userMessage = errorData['message'] ?? 'Signup failed';
+        final errors = errorData['errors'] as Map<String, dynamic>?;
+        
+        if (errors != null && errors.isNotEmpty) {
+          // Create user-friendly error messages
+          final List<String> errorMessages = [];
+          
+          errors.forEach((field, messages) {
+            if (messages is List && messages.isNotEmpty) {
+              final fieldName = _formatFieldName(field);
+              final errorMsg = messages.first.toString();
+              errorMessages.add('$fieldName: $errorMsg');
+            }
+          });
+          
+          if (errorMessages.isNotEmpty) {
+            userMessage = errorMessages.join('\n');
+          }
+        }
+        
         throw ValidationException(
-          errorData['message'] ?? 'Invalid signup data',
-          validationErrors: errorData['errors'],
+          userMessage,
+          validationErrors: errors,
           statusCode: 400,
         );
       
@@ -440,7 +530,7 @@ class ApiService {
       // Use the new endpoint format: PUT /api/users/{user_id}/
       final String endpoint = userId != null 
           ? '$_baseUrl/users/$userId/' 
-          : '$_baseUrl/users/profile/'; // Fallback to old endpoint
+          : '$_baseUrl/users/upsert/'; // Fallback to old endpoint
       final uri = Uri.parse(endpoint);
       final requestBody = json.encode(request.toJson());
       
@@ -503,9 +593,31 @@ class ApiService {
       case 400:
         final errorData = _parseErrorResponse(response);
         debugPrint('Profile update validation error: $errorData');
+        
+        // Extract user-friendly messages from validation errors
+        String userMessage = errorData['message'] ?? 'Profile update failed';
+        final errors = errorData['errors'] as Map<String, dynamic>?;
+        
+        if (errors != null && errors.isNotEmpty) {
+          // Create user-friendly error messages
+          final List<String> errorMessages = [];
+          
+          errors.forEach((field, messages) {
+            if (messages is List && messages.isNotEmpty) {
+              final fieldName = _formatFieldName(field);
+              final errorMsg = messages.first.toString();
+              errorMessages.add('$fieldName: $errorMsg');
+            }
+          });
+          
+          if (errorMessages.isNotEmpty) {
+            userMessage = errorMessages.join('\n');
+          }
+        }
+        
         throw ValidationException(
-          errorData['message'] ?? 'Invalid profile data',
-          validationErrors: errorData['errors'],
+          userMessage,
+          validationErrors: errors,
           statusCode: 400,
         );
       
@@ -961,6 +1073,41 @@ class ApiService {
           'Bulk upload for $dataType failed with status ${response.statusCode}',
           statusCode: response.statusCode,
         );
+    }
+  }
+
+  /// Format field names for user-friendly display
+  String _formatFieldName(String fieldName) {
+    switch (fieldName.toLowerCase()) {
+      case 'email':
+        return 'Email';
+      case 'username':
+        return 'Username';
+      case 'phone_number':
+      case 'phonenumber':
+        return 'Phone Number';
+      case 'first_name':
+      case 'firstname':
+        return 'First Name';
+      case 'last_name':
+      case 'lastname':
+        return 'Last Name';
+      case 'display_name':
+      case 'displayname':
+        return 'Display Name';
+      case 'bio':
+        return 'Bio';
+      case 'profile_picture':
+      case 'profilepicture':
+        return 'Profile Picture';
+      default:
+        // Convert snake_case to Title Case
+        return fieldName
+            .split('_')
+            .map((word) => word.isNotEmpty 
+                ? word[0].toUpperCase() + word.substring(1).toLowerCase()
+                : '')
+            .join(' ');
     }
   }
 
