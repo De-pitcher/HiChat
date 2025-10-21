@@ -80,6 +80,7 @@ class ChatWebSocketService {
   int _reconnectAttempts = 0;
   Timer? _reconnectTimer;
   Timer? _pingTimer;
+  Timer? _connectionTimeoutTimer;
 
   // Authentication
   int? _lastUserId;
@@ -179,12 +180,22 @@ class ChatWebSocketService {
         onDone: _onClosed,
       );
 
-      // Mark as connected and notify listeners
-      _updateConnectionState(true);
-      _onConnected();
-
-      // Start ping timer to keep connection alive
-      _startPingTimer();
+      // Don't mark as connected yet - wait for actual connection confirmation
+      // Connection will be confirmed when we receive the first message successfully
+      debugPrint('$_tag: WebSocket channel created, waiting for connection confirmation...');
+      
+      // Start connection timeout timer
+      _connectionTimeoutTimer?.cancel();
+      _connectionTimeoutTimer = Timer(const Duration(seconds: 10), () {
+        if (!_isConnected) {
+          debugPrint('$_tag: WebSocket connection timeout after 10 seconds');
+          closeWebSocket();
+          _scheduleReconnect();
+        }
+      });
+      
+      // Send a connection test ping to confirm the connection works
+      _sendConnectionTest();
     } catch (e) {
       debugPrint('$_tag: Connection error: $e');
       debugPrint('$_tag: Connection error type: ${e.runtimeType}');
@@ -202,11 +213,31 @@ class ChatWebSocketService {
     }
   }
 
+  /// Send a connection test to confirm WebSocket is ready
+  void _sendConnectionTest() {
+    try {
+      debugPrint('$_tag: Sending connection test...');
+      final testMessage = jsonEncode({
+        'action': 'connection_test',
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      });
+      _webSocket?.sink.add(testMessage);
+    } catch (e) {
+      debugPrint('$_tag: Failed to send connection test: $e');
+      _updateConnectionState(false);
+      if (_shouldReconnect) {
+        _scheduleReconnect();
+      }
+    }
+  }
+
   /// Handle successful connection
   void _onConnected() {
-    debugPrint('$_tag: WebSocket connected');
-    _isConnected = true;
+    debugPrint('$_tag: WebSocket connected and confirmed');
     _reconnectAttempts = 0;
+
+    // Start ping timer to keep connection alive
+    _startPingTimer();
 
     // Send enhanced queued messages first (with retry logic)
     _processEnhancedMessageQueue();
@@ -333,6 +364,15 @@ class ChatWebSocketService {
     try {
       final String text = data.toString();
       debugPrint('$_tag: Received message: $text');
+
+      // Confirm connection on first successful message
+      if (!_isConnected) {
+        debugPrint('$_tag: First message received, confirming connection...');
+        _connectionTimeoutTimer?.cancel();
+        _connectionTimeoutTimer = null;
+        _updateConnectionState(true);
+        _onConnected();
+      }
 
       final Map<String, dynamic> json = jsonDecode(text);
       final String? eventType = json['type'];
@@ -485,6 +525,8 @@ class ChatWebSocketService {
     _reconnectAttempts = 0;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
+    _connectionTimeoutTimer?.cancel();
+    _connectionTimeoutTimer = null;
   }
 
   /// Start ping timer to keep connection alive
@@ -589,6 +631,7 @@ class ChatWebSocketService {
     _shouldReconnect = false;
     _reconnectTimer?.cancel();
     _pingTimer?.cancel();
+    _connectionTimeoutTimer?.cancel();
     _subscription?.cancel();
     _webSocket?.sink.close(_normalClosureStatus);
     _webSocket = null;
@@ -596,6 +639,42 @@ class ChatWebSocketService {
     _resetReconnectState();
     clearListeners();
     _videoUploadListener = null;
+  }
+
+  /// Reconnect using stored credentials if available
+  Future<bool> reconnectWithStoredCredentials() async {
+    if (_lastUserId == null && _lastToken == null) {
+      debugPrint('$_tag: No stored credentials available for reconnection');
+      return false;
+    }
+
+    debugPrint('$_tag: Attempting reconnection with stored credentials');
+    
+    // Preserve existing listeners
+    final existingListeners = List<ChatEventListener>.from(_listeners);
+    debugPrint('$_tag: Preserving ${existingListeners.length} existing listeners');
+    
+    try {
+      await connectWebSocket(userId: _lastUserId, token: _lastToken);
+      
+      // Restore listeners after connection
+      for (final listener in existingListeners) {
+        addListener(listener);
+      }
+      debugPrint('$_tag: Restored ${existingListeners.length} listeners after reconnection');
+      
+      return true;
+    } catch (e) {
+      debugPrint('$_tag: Reconnection with stored credentials failed: $e');
+      
+      // Restore listeners even if connection failed
+      for (final listener in existingListeners) {
+        addListener(listener);
+      }
+      debugPrint('$_tag: Restored listeners after failed reconnection attempt');
+      
+      return false;
+    }
   }
 
   // Event notification methods
@@ -1114,11 +1193,14 @@ class ChatWebSocketService {
       debugPrint('$_tag: Successfully parsed ${chats.length} active chats');
 
       // Notify listeners
+      debugPrint('$_tag: Notifying ${_listeners.length} listeners of active chats');
       for (final listener in List<ChatEventListener>.from(_listeners)) {
         try {
+          debugPrint('$_tag: Calling onChatSummariesReceived on listener: ${listener.runtimeType}');
           listener.onChatSummariesReceived(chats);
+          debugPrint('$_tag: Successfully notified listener: ${listener.runtimeType}');
         } catch (e) {
-          debugPrint('$_tag: Error notifying active chats: $e');
+          debugPrint('$_tag: Error notifying active chats to ${listener.runtimeType}: $e');
         }
       }
     } catch (e) {

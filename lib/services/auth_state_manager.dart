@@ -318,73 +318,26 @@ class AuthStateManager extends ChangeNotifier {
       try {
         debugPrint('AuthStateManager: Initializing WebSocket connections for user ${_currentUser!.id}');
         
-        // Initialize chat WebSocket service
-        await _chatWebSocketService.connectWebSocket(
+        // Initialize chat WebSocket service (event-driven, non-blocking)
+        debugPrint('AuthStateManager: Starting chat WebSocket connection...');
+        _chatWebSocketService.connectWebSocket(
           userId: _currentUser!.id,
           token: _currentUser!.token,
         );
         
-        // Initialize chat state manager with user context
+        // Initialize chat state manager (will handle connection events)
+        debugPrint('AuthStateManager: Initializing chat state manager...');
         await _chatStateManager.initialize(_currentUser!.id.toString());
         
-        debugPrint('AuthStateManager: Chat WebSocket connection and state initialized successfully');
+        debugPrint('AuthStateManager: Chat WebSocket and state manager initialized');
         
-        // Initialize media background WebSocket service
-        try {
-          debugPrint('🎬🎬🎬 AuthStateManager: ATTEMPTING TO START MEDIA BACKGROUND SERVICE...');
-          await HiChatMediaBackgroundService.start();
-          
-          debugPrint('🎬🎬🎬 AuthStateManager: CONNECTING MEDIA WEBSOCKET...');
-          await HiChatMediaBackgroundService.connect(
-            userId: _currentUser!.id.toString(), 
-            username: _currentUser!.username,
-            token: _currentUser!.token
-          );
-          
-          debugPrint('🎬🎬🎬 AuthStateManager: MEDIA WEBSOCKET CONNECTION SUCCESSFUL!');
-        } catch (mediaError) {
-          debugPrint('🎬🎬🎬 AuthStateManager: MEDIA WEBSOCKET FAILED: $mediaError');
-          debugPrint('🎬🎬🎬 AuthStateManager: MEDIA ERROR TYPE: ${mediaError.runtimeType}');
-          // Continue without media WebSocket - it's not critical for basic app functionality
-        }
+        // Media background service initialization disabled to avoid permission prompts
+        // Individual features will request media permissions as needed
+        debugPrint('AuthStateManager: Skipping media background service to avoid startup permissions');
         
-        // Initialize location background WebSocket service
-        try {
-          debugPrint('AuthStateManager: Checking location permissions...');
-          bool hasLocationPermissions = await HiChatLocationBackgroundService.hasLocationPermissions();
-          
-          // Only request permissions if we don't already have them
-          if (!hasLocationPermissions) {
-            debugPrint('AuthStateManager: Requesting location permissions...');
-            hasLocationPermissions = await HiChatLocationBackgroundService.requestLocationPermissions();
-          } else {
-            debugPrint('AuthStateManager: Location permissions already granted');
-          }
-          
-          if (hasLocationPermissions) {
-            debugPrint('AuthStateManager: Location permissions granted, waiting for system to process...');
-            // Give Android system time to fully process the runtime permission grants
-            // This is critical for Android 14+ (API 34+) which has stricter foreground service requirements
-            await Future.delayed(const Duration(seconds: 2));
-            
-            debugPrint('AuthStateManager: Starting location background service...');
-            await HiChatLocationBackgroundService.start();
-            
-            debugPrint('AuthStateManager: Connecting location WebSocket...');
-            await HiChatLocationBackgroundService.connect(
-              userId: _currentUser!.id.toString(), 
-              username: _currentUser!.username,
-              token: _currentUser!.token
-            );
-            
-            debugPrint('AuthStateManager: Location WebSocket connection initialized successfully');
-          } else {
-            debugPrint('AuthStateManager: Location permissions not granted, skipping location service');
-          }
-        } catch (locationError) {
-          debugPrint('AuthStateManager: Failed to initialize location WebSocket (continuing without it): $locationError');
-          // Continue without location WebSocket - it's not critical for basic app functionality
-        }
+        // Location background service initialization disabled to avoid permission prompts
+        // Location sharing feature will request permissions when user explicitly tries to share location
+        debugPrint('AuthStateManager: Skipping location background service to avoid startup permissions');
         
         debugPrint('AuthStateManager: All WebSocket connections initialized successfully');
       } catch (e) {

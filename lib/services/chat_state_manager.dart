@@ -69,31 +69,51 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
 
   /// Initialize the chat state manager with user context
   Future<void> initialize(String userId) async {
-    if (_isInitialized && _currentUserId == userId) return;
+    if (_isInitialized && _currentUserId == userId) {
+      debugPrint('ChatStateManager: Already initialized for user $userId');
+      return;
+    }
     
     _currentUserId = userId;
     _setLoading(true);
     
     try {
       debugPrint('ChatStateManager: Initializing for user: $userId');
+      debugPrint('ChatStateManager: WebSocket connected: ${_chatWebSocketService.isConnected}');
+      
+      // Ensure we're registered as a WebSocket listener (in case it was cleared during logout)
+      _chatWebSocketService.addListener(this);
+      debugPrint('ChatStateManager: Re-added WebSocket event listener');
       
       // Clear previous state
       _chats.clear();
       _chatMessages.clear();
       
-      // Load initial data if WebSocket is connected
+      // Set as initialized - chat loading will happen via onConnectionEstablished()
+      _isInitialized = true;
+      
+      // If WebSocket is already connected, trigger chat loading immediately
       if (_chatWebSocketService.isConnected) {
+        debugPrint('ChatStateManager: WebSocket already connected, loading chats immediately');
         _chatWebSocketService.loadActiveChats();
+      } else {
+        debugPrint('ChatStateManager: WebSocket not connected yet, chats will load when connection established');
+        // Set a timeout to stop loading state if connection takes too long
+        Timer(const Duration(seconds: 10), () {
+          if (_isLoading && !_chatWebSocketService.isConnected) {
+            debugPrint('ChatStateManager: WebSocket connection timeout, stopping loading state');
+            _setLoading(false);
+          }
+        });
       }
       
-      _isInitialized = true;
-      debugPrint('ChatStateManager: Initialization complete');
+      debugPrint('ChatStateManager: Initialization complete for user $userId');
     } catch (e) {
       debugPrint('ChatStateManager: Initialization failed: $e');
       _setError('Failed to initialize chat service: $e');
-    } finally {
       _setLoading(false);
     }
+    // Note: Don't always set loading to false here - let onConnectionEstablished or timeout handle it
   }
 
   /// Get messages for a specific chat
@@ -720,16 +740,24 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
 
   /// Refresh chats by reloading from WebSocket
   Future<void> refreshChats() async {
+    debugPrint('ChatStateManager: Refreshing chats...');
+    _setLoading(true);
+    clearError(); // Clear any existing errors
+    
     if (!_chatWebSocketService.isConnected) {
-      debugPrint('ChatStateManager: Cannot refresh chats - WebSocket not connected');
-      _setError('Not connected to chat service');
-      return;
+      debugPrint('ChatStateManager: WebSocket not connected, attempting to reconnect...');
+      
+      bool reconnected = await reconnectWebSocket();
+      if (!reconnected) {
+        debugPrint('ChatStateManager: Failed to reconnect WebSocket');
+        _setError('Failed to reconnect to chat service');
+        _setLoading(false);
+        return;
+      }
     }
 
     try {
-      debugPrint('ChatStateManager: Refreshing chats...');
-      _setLoading(true);
-      clearError(); // Clear any existing errors
+      debugPrint('ChatStateManager: WebSocket connected, requesting chat refresh...');
       
       // Trigger WebSocket to load active chats
       // The loading state will be set to false in onChatSummariesReceived
@@ -759,6 +787,95 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
     }
   }
 
+  /// Manually trigger WebSocket reconnection
+  Future<bool> reconnectWebSocket() async {
+    if (_chatWebSocketService.isConnected) {
+      debugPrint('ChatStateManager: WebSocket already connected');
+      return true;
+    }
+
+    if (_currentUserId == null) {
+      debugPrint('ChatStateManager: No user ID available for reconnection');
+      return false;
+    }
+
+    try {
+      debugPrint('ChatStateManager: Attempting WebSocket reconnection for user: $_currentUserId');
+      
+      // Ensure we're registered as a listener before attempting reconnection
+      _chatWebSocketService.addListener(this);
+      debugPrint('ChatStateManager: Re-registered as WebSocket listener');
+      
+      // Use the stored credentials from the WebSocket service for reconnection
+      final success = await _chatWebSocketService.reconnectWithStoredCredentials();
+      
+      if (!success) {
+        debugPrint('ChatStateManager: Initial reconnection attempt failed, trying with explicit userid');
+        // Fallback: try with just the userId if available
+        if (_currentUserId != null) {
+          await _chatWebSocketService.connectWebSocket(userId: int.tryParse(_currentUserId!));
+        } else {
+          debugPrint('ChatStateManager: No userId available for fallback reconnection');
+          return false;
+        }
+      }
+      
+      // Ensure we're still registered as a listener after reconnection
+      _chatWebSocketService.addListener(this);
+      debugPrint('ChatStateManager: Re-registered as WebSocket listener after reconnection');
+      
+      // Wait for connection to establish (up to 10 seconds)
+      int attempts = 0;
+      const maxConnectionAttempts = 100; // 10 seconds (100 * 100ms)
+      
+      while (!_chatWebSocketService.isConnected && attempts < maxConnectionAttempts) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        attempts++;
+      }
+      
+      if (_chatWebSocketService.isConnected) {
+        debugPrint('ChatStateManager: WebSocket reconnection successful');
+        clearError();
+        return true;
+      } else {
+        debugPrint('ChatStateManager: WebSocket reconnection failed within timeout');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('ChatStateManager: WebSocket reconnection error: $e');
+      return false;
+    }
+  }
+
+  /// Force refresh with connection retry - useful for pull-to-refresh
+  Future<void> forceRefreshWithReconnect() async {
+    debugPrint('ChatStateManager: Force refresh with reconnection...');
+    
+    // Always try to reconnect first, even if we think we're connected
+    if (_currentUserId != null) {
+      debugPrint('ChatStateManager: Ensuring WebSocket connection...');
+      
+      // Close existing connection if any and reconnect fresh
+      if (_chatWebSocketService.isConnected) {
+        debugPrint('ChatStateManager: Closing existing connection for fresh reconnect...');
+        _chatWebSocketService.closeWebSocket();
+        
+        // Wait a bit for clean disconnect
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+      
+      bool connected = await reconnectWebSocket();
+      if (!connected) {
+        debugPrint('ChatStateManager: Failed to establish fresh connection');
+        _setError('Unable to connect to chat service');
+        return;
+      }
+    }
+    
+    // Now refresh chats
+    await refreshChats();
+  }
+
   /// Clear all state (used on logout)
   void clear() {
     _chats.clear();
@@ -767,8 +884,10 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
     _replyContext.clear();
     _isInitialized = false;
     _currentUserId = null;
+    _setLoading(false); // Ensure loading state is cleared
+    _errorMessage = null; // Clear any error state
+    debugPrint('ChatStateManager: State cleared - loading: $_isLoading, error: $_errorMessage');
     notifyListeners();
-    debugPrint('ChatStateManager: State cleared');
   }
 
   // Private helper methods
@@ -872,13 +991,27 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
   @override
   void onConnectionEstablished() {
     debugPrint('ChatStateManager: WebSocket connection established');
+    debugPrint('ChatStateManager: Current state - userId: $_currentUserId, initialized: $_isInitialized, chats: ${_chats.length}');
+    
     if (_currentUserId != null && !_isInitialized) {
+      // User ID exists but not initialized yet - call initialize
+      debugPrint('ChatStateManager: User not initialized, calling initialize()');
       initialize(_currentUserId!);
-    } else if (_currentUserId != null && _chats.isEmpty) {
-      // If we're already initialized but have no chats, refresh them
-      debugPrint('ChatStateManager: Connection established, refreshing chats');
-      refreshChats();
+    } else if (_currentUserId != null && _isInitialized) {
+      // User is initialized and WebSocket just connected - load chats
+      debugPrint('ChatStateManager: Connection established for initialized user, loading chats...');
+      try {
+        _setLoading(true);
+        _chatWebSocketService.loadActiveChats();
+        debugPrint('ChatStateManager: Called loadActiveChats() after connection established');
+      } catch (e) {
+        debugPrint('ChatStateManager: Error calling loadActiveChats(): $e');
+        _setError('Failed to load chats: $e');
+      }
+    } else {
+      debugPrint('ChatStateManager: No current user ID, skipping chat loading');
     }
+    
     notifyListeners();
   }
 
@@ -1116,17 +1249,25 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
 
   @override
   void onChatSummariesReceived(List<Chat> summaries) {
-    debugPrint('ChatStateManager: Received ${summaries.length} chat summaries');
+    debugPrint('ChatStateManager: onChatSummariesReceived called with ${summaries.length} chat summaries');
     
-    for (final chat in summaries) {
-      debugPrint('ChatStateManager: Processing chat ${chat.id} - "${chat.name}"');
-      debugPrint('  - Participants: ${chat.participants.length}');
-      debugPrint('  - ParticipantIds: ${chat.participantIds}');
-      _chats[chat.id] = chat;
+    try {
+      for (final chat in summaries) {
+        debugPrint('ChatStateManager: Processing chat ${chat.id} - "${chat.name}"');
+        debugPrint('  - Participants: ${chat.participants.length}');
+        debugPrint('  - ParticipantIds: ${chat.participantIds}');
+        _chats[chat.id] = chat;
+      }
+      
+      debugPrint('ChatStateManager: Setting loading to false and notifying listeners');
+      _setLoading(false);
+      notifyListeners();
+      debugPrint('ChatStateManager: onChatSummariesReceived completed successfully');
+    } catch (e) {
+      debugPrint('ChatStateManager: Error in onChatSummariesReceived: $e');
+      _setLoading(false);
+      _setError('Error processing chat data: $e');
     }
-    
-    _setLoading(false);
-    notifyListeners();
   }
 
   @override
@@ -1234,6 +1375,26 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
   void debugTestMessageQueue() {
     debugPrint('🧪 ChatStateManager: Testing message queue functionality');
     // _chatWebSocketService.debugTestQueue();
+  }
+
+  /// Debug method to check WebSocket connection and manually trigger chat loading
+  void debugConnectionAndLoadChats() {
+    debugPrint('🔍 ChatStateManager Debug Info:');
+    debugPrint('  - Current User ID: $_currentUserId');
+    debugPrint('  - Is Initialized: $_isInitialized');
+    debugPrint('  - Is Loading: $_isLoading');
+    debugPrint('  - WebSocket Connected: ${_chatWebSocketService.isConnected}');
+    debugPrint('  - Chats Count: ${_chats.length}');
+    debugPrint('  - Error Message: $_errorMessage');
+    
+    if (_currentUserId != null && _chatWebSocketService.isConnected) {
+      debugPrint('🔍 Manually triggering loadActiveChats()...');
+      _chatWebSocketService.loadActiveChats();
+    } else if (_currentUserId == null) {
+      debugPrint('🔍 Cannot load chats: No user ID');
+    } else if (!_chatWebSocketService.isConnected) {
+      debugPrint('🔍 Cannot load chats: WebSocket not connected');
+    }
   }
 
   // ============================================================================
