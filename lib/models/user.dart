@@ -3,7 +3,7 @@ import 'dart:developer' as developer;
 
 class User {
   final int id;
-  final String email;
+  final String? email;
   final String? imageUrl;
   final String username;
   final String? phoneNumber;
@@ -20,7 +20,7 @@ class User {
 
   const User({
     required this.id,
-    required this.email,
+    this.email,
     this.imageUrl,
     required this.username,
     this.phoneNumber,
@@ -107,7 +107,7 @@ class User {
     try {
       final user = User(
         id: json['id'] as int,
-        email: json['email'] as String,
+        email: json['email'] as String?,
         imageUrl: json['image_url'] as String?,
         username: json['username'] as String,
         phoneNumber: json['phone_number'] as String?,
@@ -446,6 +446,8 @@ class ProfileUpdateRequest {
 }
 
 class GoogleSignInRequest {
+  /// ID token from Google Sign-In (Firebase-independent)
+  /// Note: Field name kept as 'firebaseIdToken' for backend API compatibility
   final String firebaseIdToken;
   final String email;
   final String displayName;
@@ -453,7 +455,7 @@ class GoogleSignInRequest {
   final String googleId;
 
   const GoogleSignInRequest({
-    required this.firebaseIdToken,
+    required this.firebaseIdToken, // Actually Google ID token (not Firebase)
     required this.email,
     required this.displayName,
     this.photoUrl,

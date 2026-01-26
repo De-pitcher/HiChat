@@ -154,6 +154,19 @@ class ChatWebSocketService {
       return;
     }
 
+    // Log what we received to debug authentication
+    debugPrint('$_tag: === WebSocket Connection Params ===');
+    debugPrint('$_tag: userId: $userId');
+    debugPrint('$_tag: token: ${token != null ? "${token.substring(0, token.length > 10 ? 10 : token.length)}..." : "null"}');
+    debugPrint('$_tag: token length: ${token?.length ?? 0}');
+    
+    // Determine which auth method to use
+    // Backend returns 40-char tokens (SHA1) for email/password login - these work with WebSocket
+    // Backend returns 20-char tokens for Google/phone login - these DON'T work, use user_id instead
+    final bool isLongToken = token != null && token.length >= 40;
+    final bool useToken = isLongToken;
+    debugPrint('$_tag: Using auth method: ${useToken ? "token (40+ chars)" : "user_id"}');
+
     try {
       // Build WebSocket URL with query parameters
       final baseUri = Uri.parse(_wsUrl);
@@ -162,13 +175,17 @@ class ChatWebSocketService {
         host: baseUri.host,
         path: baseUri.path,
         queryParameters: {
-          if (token != null) 'token': token,
-          // if (userId != null) 'user_id': userId.toString(),
+          // Use token if available (email/password login), otherwise use user_id (phone/Google login)
+          if (useToken) 
+            'token': token
+          else if (userId != null) 
+            'user_id': userId.toString(),
         },
       );
 
       debugPrint('$_tag: Connecting to WebSocket: ${uri.toString()}');
       debugPrint('$_tag: URI scheme: ${uri.scheme}, host: ${uri.host}, path: ${uri.path}');
+      debugPrint('$_tag: =====================================');
 
       // Create WebSocket connection
       _webSocket = WebSocketChannel.connect(uri);

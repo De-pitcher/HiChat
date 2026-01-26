@@ -30,6 +30,16 @@ class FirebasePhoneAuthService {
       debugPrint('FirebasePhoneAuth: App ID: ${_firebaseAuth.app.options.appId}');
       debugPrint('FirebasePhoneAuth: Current user: ${_firebaseAuth.currentUser?.uid ?? "None"}');
       
+      // Ensure persistence is set to avoid "missing initial state" errors
+      // This is especially important for phone auth with reCAPTCHA
+      try {
+        await _firebaseAuth.setPersistence(Persistence.LOCAL);
+        debugPrint('FirebasePhoneAuth: Persistence set to LOCAL');
+      } catch (e) {
+        debugPrint('FirebasePhoneAuth: Warning - could not set persistence: $e');
+        // Continue anyway, not fatal on native Android
+      }
+      
       await _firebaseAuth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
         timeout: const Duration(seconds: 60),
@@ -137,6 +147,15 @@ class FirebasePhoneAuthService {
     try {
       debugPrint('FirebasePhoneAuth: Resending OTP to $phoneNumber');
       debugPrint('FirebasePhoneAuth: Using resend token: ${_resendToken != null ? "Available" : "Not Available"}');
+      
+      // Ensure persistence is set to avoid "missing initial state" errors
+      try {
+        await _firebaseAuth.setPersistence(Persistence.LOCAL);
+        debugPrint('FirebasePhoneAuth: Persistence set to LOCAL for resend');
+      } catch (e) {
+        debugPrint('FirebasePhoneAuth: Warning - could not set persistence on resend: $e');
+        // Continue anyway, not fatal on native Android
+      }
       
       await _firebaseAuth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
