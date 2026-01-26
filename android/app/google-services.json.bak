@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "840338952677",
+    "project_id": "hi-chat-12aa2",
+    "storage_bucket": "hi-chat-12aa2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:840338952677:android:d088a5d6697a8d15afdf0c",
+        "android_client_info": {
+          "package_name": "com.rodeni.hi_chat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA5_RzaCrpTcTbOkfJi5QAvS67BTnz1z4M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

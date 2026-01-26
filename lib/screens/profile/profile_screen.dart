@@ -60,7 +60,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (user != null) {
       _nameController.text = user.username; // Use username as display name
       _usernameController.text = user.username;
-      _emailController.text = user.email;
+      _emailController.text = user.email ?? '';
       _phoneController.text = user.phoneNumber ?? '';
       _aboutController.text = user.about ?? '';
     }

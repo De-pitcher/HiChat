@@ -12,7 +12,20 @@
           "package_name": "com.rodeni.hi_chat"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "840338952677-naunfigof5mbmu4q878ek4hkgbov21rh.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rodeni.hi_chat",
+            "certificate_hash": "2e038e5fc0869ba2a5434c9895495fde6aeb1853"
+          }
+        },
+        {
+          "client_id": "840338952677-qjg1sln8nublqu49hko08jpg1c3ep7qd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyA5_RzaCrpTcTbOkfJi5QAvS67BTnz1z4M"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "106101058051299214974",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

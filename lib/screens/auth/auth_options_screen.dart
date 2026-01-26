@@ -54,6 +54,11 @@ class _AuthOptionsScreenState extends State<AuthOptionsScreen> {
               
               // Bottom Sign Up Text
               _buildSignUpText(context),
+              
+              const SizedBox(height: 40),
+              
+              // Debug Test Button (for development only)
+              _buildDebugTestButton(context),
             ],
           ),
         ),
@@ -416,6 +421,25 @@ class _AuthOptionsScreenState extends State<AuthOptionsScreen> {
   }
 
 
+
+  Widget _buildDebugTestButton(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      child: OutlinedButton.icon(
+        onPressed: () => Navigator.pushNamed(context, '/google-signin-test'),
+        icon: const Icon(Icons.bug_report, size: 16),
+        label: const Text(
+          'Test Firebase-Independent Google Sign-In',
+          style: TextStyle(fontSize: 12),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.orange,
+          side: const BorderSide(color: Colors.orange),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        ),
+      ),
+    );
+  }
 
   void _showComingSoon(BuildContext context, String feature) {
     final theme = Theme.of(context);

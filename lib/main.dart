@@ -32,6 +32,7 @@ import 'screens/contacts/contacts_screen.dart';
 import 'screens/calls/calls_screen.dart';
 import 'models/chat.dart';
 import 'utils/page_transitions.dart';
+import 'test/google_signin_test_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -377,6 +378,12 @@ class HiChatApp extends StatelessWidget {
               final chat = settings.arguments as Chat;
               return PageTransitions.slideFromRight(
                 ChatInfoScreen(chat: chat),
+                settings: settings,
+              );
+
+            case '/google-signin-test':
+              return PageTransitions.slideFromRight(
+                const GoogleSignInTestPage(),
                 settings: settings,
               );
 

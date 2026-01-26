@@ -663,10 +663,10 @@ class _UserSearchItem extends StatelessWidget {
               ),
             ],
             // Email (shown last)
-            if (user.email.isNotEmpty) ...[
+            if (user.email?.isNotEmpty ?? false) ...[
               const SizedBox(height: 4),
               Text(
-                user.email,
+                user.email!,
                 style: TextStyle(
                   color: Colors.grey[500],
                   fontSize: 11,

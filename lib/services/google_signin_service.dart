@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user.dart' as app_user;
 import 'api_service.dart';
 
@@ -17,7 +16,6 @@ class GoogleSignInService {
     ],
   );
 
-  final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
   final ApiService _apiService = ApiService();
 
   /// Sign in with Google
@@ -37,46 +35,28 @@ class GoogleSignInService {
       // Obtain the auth details from the request
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
 
-      debugPrint('=== GOOGLE SIGN-IN SUCCESS ===');
+      debugPrint('=== GOOGLE SIGN-IN SUCCESS (Firebase-Independent) ===');
       debugPrint('Email: ${googleUser.email}');
       debugPrint('Display Name: ${googleUser.displayName}');
       debugPrint('Photo URL: ${googleUser.photoUrl}');
       debugPrint('ID: ${googleUser.id}');
-      debugPrint('Access Token: ${googleAuth.accessToken?.substring(0, 20)}...');
-      debugPrint('ID Token: ${googleAuth.idToken?.substring(0, 20)}...');
-      debugPrint('=============================');
+      debugPrint('Access Token Available: ${googleAuth.accessToken != null}');
+      debugPrint('ID Token Available: ${googleAuth.idToken != null}');
+      debugPrint('====================================================');
 
-      // Create a credential for Firebase Auth (if using Firebase)
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      // Sign in to Firebase with the Google user credential
-      // Using a try-catch to handle potential Firebase Auth issues
-      UserCredential? userCredential;
-      String? firebaseIdToken;
-      
-      try {
-        userCredential = await _firebaseAuth.signInWithCredential(credential);
-        
-        // Get the Firebase ID token for backend authentication
-        if (userCredential.user != null) {
-          firebaseIdToken = await userCredential.user!.getIdToken();
-        }
-        
-        debugPrint('Firebase Auth successful');
-      } catch (firebaseError) {
-        debugPrint('Firebase Auth error: $firebaseError');
-        debugPrint('Proceeding with Google ID token as fallback');
-        
-        // Use the Google ID token as fallback if Firebase auth fails
-        firebaseIdToken = googleAuth.idToken;
+      // Validate that we have the required tokens
+      if (googleAuth.idToken == null) {
+        throw Exception('Google ID token is null - authentication failed');
       }
 
-      // Create the request using available token data
+      // Use Google ID token directly (bypassing Firebase Auth)
+      final googleIdToken = googleAuth.idToken!;
+
+      debugPrint('Using Google ID token directly for backend authentication');
+
+      // Create the request using Google ID token instead of Firebase token
       final googleSignInRequest = app_user.GoogleSignInRequest(
-        firebaseIdToken: firebaseIdToken ?? googleAuth.idToken ?? '',
+        firebaseIdToken: googleIdToken, // Using Google ID token directly
         email: googleUser.email,
         displayName: googleUser.displayName ?? '',
         photoUrl: googleUser.photoUrl,
@@ -107,16 +87,10 @@ class GoogleSignInService {
   Future<void> _logoutOnError() async {
     try {
       debugPrint('Performing logout due to sign-in error...');
-      await Future.wait([
-        _googleSignIn.signOut().catchError((e) {
-          debugPrint('Error during Google signOut: $e');
-          return null;
-        }),
-        _firebaseAuth.signOut().catchError((e) {
-          debugPrint('Error during Firebase signOut: $e');
-          return null;
-        }),
-      ]);
+      await _googleSignIn.signOut().catchError((e) {
+        debugPrint('Error during Google signOut: $e');
+        return null;
+      });
       debugPrint('Logout completed after error');
     } catch (e) {
       debugPrint('Error during logout: $e');
@@ -124,14 +98,11 @@ class GoogleSignInService {
     }
   }
 
-  /// Sign out from Google and Firebase
+  /// Sign out from Google (Firebase-independent)
   Future<void> signOut() async {
     try {
-      await Future.wait([
-        _googleSignIn.signOut(),
-        _firebaseAuth.signOut(),
-      ]);
-      debugPrint('Google Sign-Out successful');
+      await _googleSignIn.signOut();
+      debugPrint('Google Sign-Out successful (Firebase-independent)');
     } catch (e) {
       debugPrint('Google Sign-Out error: $e');
       rethrow;
@@ -148,24 +119,23 @@ class GoogleSignInService {
   Future<void> disconnect() async {
     try {
       await _googleSignIn.disconnect();
-      await _firebaseAuth.signOut();
-      debugPrint('Google account disconnected');
+      debugPrint('Google account disconnected (Firebase-independent)');
     } catch (e) {
       debugPrint('Google disconnect error: $e');
       rethrow;
     }
   }
 
-  /// Complete logout including Google Sign-Out and Firebase Sign-Out
+  /// Complete logout including Google Sign-Out (Firebase-independent)
   /// This is a comprehensive logout method that can be called independently
   Future<void> performCompleteLogout() async {
     try {
-      debugPrint('GoogleSignInService: Performing complete logout...');
+      debugPrint('GoogleSignInService: Performing complete logout (Firebase-independent)...');
       
-      // Sign out from Google and Firebase
+      // Sign out from Google only
       await signOut();
       
-      debugPrint('GoogleSignInService: Complete logout successful');
+      debugPrint('GoogleSignInService: Complete logout successful (Firebase-independent)');
     } catch (e) {
       debugPrint('GoogleSignInService: Error during complete logout: $e');
       rethrow;
