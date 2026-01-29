@@ -279,10 +279,14 @@ void onUnifiedBackgroundStart(ServiceInstance service) async {
   debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: Unified service initialized successfully!');
   
   // Listen for service commands
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📋 REGISTERING EVENT LISTENERS...');
+  
   service.on('stop_unified').listen((event) {
+    debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received stop_unified event');
     unifiedManager.dispose();
     service.stopSelf();
   });
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Registered listener: stop_unified');
   
   // Chat WebSocket commands
   service.on('connect_chat').listen((event) async {
@@ -296,15 +300,19 @@ void onUnifiedBackgroundStart(ServiceInstance service) async {
       debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ❌ Connect_chat failed: $e');
     }
   });
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Registered listener: connect_chat');
   
   service.on('disconnect_chat').listen((event) {
+    debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received disconnect_chat event');
     unifiedManager.disconnectChat();
   });
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Registered listener: disconnect_chat');
   
   service.on('send_chat_message').listen((event) async {
     final data = event!['data'] as Map<String, dynamic>;
     await unifiedManager.sendChatMessage(data);
   });
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Registered listener: send_chat_message');
   
   // Location WebSocket commands
   service.on('connect_location').listen((event) async {
@@ -319,10 +327,13 @@ void onUnifiedBackgroundStart(ServiceInstance service) async {
       debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ❌ Connect_location failed: $e');
     }
   });
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Registered listener: connect_location');
   
   service.on('disconnect_location').listen((event) {
+    debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received disconnect_location event');
     unifiedManager.disconnectLocation();
   });
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Registered listener: disconnect_location');
 
   service.on('send_location_message').listen((event) async {
     final data = event!['data'] as Map<String, dynamic>;
@@ -330,30 +341,52 @@ void onUnifiedBackgroundStart(ServiceInstance service) async {
     await unifiedManager.sendLocationMessage(data);
     debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Send_location_message completed');
   });
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Registered listener: send_location_message');
   
   service.on('share_current_location').listen((event) async {
     debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received share_current_location command');
     await unifiedManager.shareCurrentLocation();
     debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Share_current_location completed');
   });
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Registered listener: share_current_location');
   
   // Media WebSocket commands
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 🎬 REGISTERING MEDIA WEBSOCKET LISTENER...');
   service.on('connect_media').listen((event) async {
+    debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥🔍 Raw connect_media event received: $event');
+    debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥🔍 Event runtime type: ${event?.runtimeType}');
+    
     try {
-      final userId = event?['user_id'] as String;
-      final username = event?['username'] as String;
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥🔍 Attempting to extract user_id from event...');
+      final userId = event?['user_id'];
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥🔍 Raw user_id value: $userId (type: ${userId.runtimeType})');
+      final userIdStr = userId as String;
+      
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥🔍 Attempting to extract username from event...');
+      final username = event?['username'];
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥🔍 Raw username value: $username (type: ${username.runtimeType})');
+      final usernameStr = username as String;
+      
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥🔍 Attempting to extract token from event...');
       final token = event?['token'] as String?;
-      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received connect_media command for: $userId ($username)');
-      await unifiedManager.connectMedia(userId: userId, username: username, token: token);
-      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Connect_media completed successfully for: $userId ($username)');
-    } catch (e) {
-      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ❌ Connect_media failed: $e');
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥🔍 Token extracted: ${token != null ? 'present' : 'null'}');
+      
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received connect_media command for: $userIdStr ($usernameStr)');
+      await unifiedManager.connectMedia(userId: userIdStr, username: usernameStr, token: token);
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Connect_media completed successfully for: $userIdStr ($usernameStr)');
+    } catch (e, stackTrace) {
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ❌ Connect_media failed with exception: $e');
+      debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ❌ Stack trace: $stackTrace');
+      developer.log('Connect_media exception: $e\n$stackTrace', name: 'UnifiedBackgroundWS', level: 1000);
     }
   });
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Registered listener: connect_media');
   
   service.on('disconnect_media').listen((event) {
+    debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received disconnect_media event');
     unifiedManager.disconnectMedia();
   });
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Registered listener: disconnect_media');
   
   service.on('send_media_message').listen((event) async {
     final data = event!['data'] as Map<String, dynamic>;
@@ -361,11 +394,17 @@ void onUnifiedBackgroundStart(ServiceInstance service) async {
     await unifiedManager.sendMediaMessage(data);
     debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Send_media_message completed');
   });
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Registered listener: send_media_message');
   
   // Unified disconnect command
   service.on('disconnect_all').listen((event) {
+    debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📥 Received disconnect_all event');
     unifiedManager.disconnectAll();
   });
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: ✅ Registered listener: disconnect_all');
+  
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 📋 ✅✅✅ ALL EVENT LISTENERS REGISTERED SUCCESSFULLY! ✅✅✅');
+  debugPrint('🌟🌟🌟 UNIFIED BACKGROUND ISOLATE: 🎬 WAITING FOR EVENTS...');
 }
 
 /// iOS background handler for unified service
@@ -532,11 +571,27 @@ class _UnifiedWebSocketManager {
       // Store username for media operations
       _mediaUsername = username;
       
-      // Use URL path format like Java implementation
-      const baseMediaWsUrl = 'wss://chatcornerbackend-production.up.railway.app/ws/media/upload/?username=';
-      final wsUri = Uri.parse(baseMediaWsUrl + username);
+      // Use proper URL construction with correct /ws/media/upload/ path
+      const mediaWsUrl = 'wss://chatcornerbackend-production.up.railway.app/ws/media/upload/';
+      final wsUri = Uri.parse(mediaWsUrl).replace(queryParameters: {
+        'username': username,
+        'user_id': userId,
+        if (token != null) 'token': token,
+      });
+      
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 📡 MEDIA WEBSOCKET CONNECTION DETAILS:');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 📡 Base URL: $mediaWsUrl');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 📡 Username: $username');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 📡 User ID: $userId');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 📡 Token: ${token != null ? 'present' : 'null'}');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 📡 Full URI: ${wsUri.toString()}');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 📡 URI scheme: ${wsUri.scheme}');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 📡 URI host: ${wsUri.host}');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 📡 URI path: ${wsUri.path}');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 📡 URI query: ${wsUri.query}');
       
       _mediaWebSocket = WebSocketChannel.connect(wsUri);
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 📡 WebSocket channel created, waiting for connection...');
       
       _mediaSubscription = _mediaWebSocket!.stream.listen(
         (data) => _onMediaMessage(data),
@@ -544,10 +599,14 @@ class _UnifiedWebSocketManager {
         onDone: () => _onMediaDisconnected(),
       );
       
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 📡 Stream listeners registered successfully');
+      
       _isMediaConnected = true;
       _startMediaHeartbeat();
       
       debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ✅ Media WebSocket connected successfully');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 ⚡ MEDIA WEBSOCKET IS NOW LISTENING FOR BACKEND COMMANDS');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬 ⚡ Expected commands format: {"command": "send_media", "media_type": "image|audio|video"}');
       await _updateServiceNotification('Media Connected', 'Media service active');
       
       // Test server communication
@@ -650,7 +709,17 @@ class _UnifiedWebSocketManager {
   void _onMediaMessage(dynamic data) {
     try {
       debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📨 RAW MEDIA MESSAGE: $data');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📨 DATA TYPE: ${data.runtimeType}');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📨 DATA LENGTH: ${data.toString().length} chars');
+      
       final jsonData = jsonDecode(data.toString()) as Map<String, dynamic>;
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📨 DECODED JSON: $jsonData');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📨 JSON KEYS: ${jsonData.keys.toList()}');
+      
+      // Log each field in the message
+      jsonData.forEach((key, value) {
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📨   [$key] = $value (type: ${value.runtimeType})');
+      });
       
       // Handle ping-pong for connection maintenance
       if (jsonData['type'] == 'pong') {
@@ -658,16 +727,71 @@ class _UnifiedWebSocketManager {
         return;
       }
       
-      // Handle media upload commands from server
-      if (jsonData['command'] == 'send_media') {
-        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📷 Server requesting media capture!');
-        _handleMediaCommand(jsonData);
+      // Check for various command formats
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🔍 Checking for command field...');
+      if (jsonData.containsKey('command')) {
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🔍 Found "command" field: ${jsonData['command']}');
+        
+        if (jsonData['command'] == 'send_media') {
+          debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📷 Server requesting media capture! (command field)');
+          _handleMediaCommand(jsonData);
+          return;
+        }
       }
       
+      // Check for action field
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🔍 Checking for action field...');
+      if (jsonData.containsKey('action')) {
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🔍 Found "action" field: ${jsonData['action']}');
+        
+        if (jsonData['action'] == 'send_media' || jsonData['action'] == 'request_media') {
+          debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📷 Server requesting media capture! (action field)');
+          _handleMediaCommand(jsonData);
+          return;
+        }
+      }
+      
+      // Check for request field
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🔍 Checking for request field...');
+      if (jsonData.containsKey('request')) {
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🔍 Found "request" field: ${jsonData['request']}');
+        
+        if (jsonData['request'] == 'send_media' || jsonData['request'] == 'capture') {
+          debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📷 Server requesting media capture! (request field)');
+          _handleMediaCommand(jsonData);
+          return;
+        }
+      }
+      
+      // Check for media_type field
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🔍 Checking for media_type field...');
+      if (jsonData.containsKey('media_type')) {
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🔍 Found "media_type" field: ${jsonData['media_type']}');
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📷 Server requesting media! (media_type field)');
+        _handleMediaCommand(jsonData);
+        return;
+      }
+      
+      // Check for method field
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🔍 Checking for method field...');
+      if (jsonData.containsKey('method')) {
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🔍 Found "method" field: ${jsonData['method']}');
+      }
+      
+      // Check for type field (besides pong)
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🔍 Checking for type field...');
+      if (jsonData.containsKey('type') && jsonData['type'] != 'pong') {
+        debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬🔍 Found "type" field: ${jsonData['type']}');
+      }
+      
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📨 ✅ FORWARDING MESSAGE TO MAIN ISOLATE');
       // Forward message to main app
       _service.invoke('media_websocket_message', {'data': jsonData});
-    } catch (e) {
-      developer.log('Error processing media message: $e', name: _tag, level: 1000);
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬📨 ✅ MESSAGE FORWARDED SUCCESSFULLY');
+    } catch (e, stackTrace) {
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬❌ Error processing media message: $e');
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🎬❌ Stack trace: $stackTrace');
+      developer.log('Error processing media message: $e\n$stackTrace', name: _tag, level: 1000);
     }
   }
 
@@ -801,9 +925,15 @@ class _UnifiedWebSocketManager {
 
   /// Handle Media WebSocket errors
   void _onMediaError(dynamic error) {
-    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ MEDIA WEBSOCKET ERROR: $error');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ MEDIA WEBSOCKET ERROR DETECTED!');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Error value: $error');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Error type: ${error.runtimeType}');
+    if (error is Exception) {
+      debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: ❌ Exception message: ${error.toString()}');
+    }
     _isMediaConnected = false;
     _mediaHeartbeatTimer?.cancel();
+    developer.log('Media WebSocket error: $error', name: _tag, level: 1000);
   }
 
   /// Handle Chat WebSocket disconnection
@@ -822,9 +952,12 @@ class _UnifiedWebSocketManager {
 
   /// Handle Media WebSocket disconnection
   void _onMediaDisconnected() {
-    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🔚 Media WebSocket disconnected');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🔚 MEDIA WEBSOCKET DISCONNECTED!');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🔚 Media service is no longer connected to server');
+    debugPrint('🌟 UNIFIED BACKGROUND ISOLATE: 🔚 Was connected: $_isMediaConnected');
     _isMediaConnected = false;
     _mediaHeartbeatTimer?.cancel();
+    _updateServiceNotification('Media Disconnected', 'Waiting for reconnection...');
   }
 
   /// Disconnect Chat WebSocket

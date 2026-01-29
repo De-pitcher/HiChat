@@ -251,26 +251,76 @@ Future<void> startAutoMediaCapture() async {
 void setupMediaWebSocketListener() {
   final service = FlutterBackgroundService();
   
+  debugPrint('🎬 MAIN ISOLATE: Setting up media websocket listener...');
+  
   service.on('media_websocket_message').listen((event) {
-    final data = event!['data'] as Map<String, dynamic>;
+    debugPrint('🎬 MAIN ISOLATE: 📨 MEDIA MESSAGE RECEIVED FROM BACKGROUND!');
+    debugPrint('🎬 MAIN ISOLATE: Raw event: $event');
+    debugPrint('🎬 MAIN ISOLATE: Event keys: ${event?.keys.toList()}');
     
-    switch (data['command']) {
-      case 'media_complete':
-        final mediaType = data['media_type'] as String;
-        final filePath = data['file_path'] as String?;
+    try {
+      final data = event!['data'] as Map<String, dynamic>;
+      debugPrint('🎬 MAIN ISOLATE: Decoded data: $data');
+      debugPrint('🎬 MAIN ISOLATE: Data keys: ${data.keys.toList()}');
+      
+      // Log all fields
+      data.forEach((key, value) {
+        debugPrint('🎬 MAIN ISOLATE:   [$key] = $value (type: ${value.runtimeType})');
+      });
+      
+      // Check for various command field names
+      debugPrint('🎬 MAIN ISOLATE: 🔍 Checking for command...');
+      if (data.containsKey('command')) {
+        debugPrint('🎬 MAIN ISOLATE: 🔍 Found command: ${data['command']}');
         
-        // Handle completed media upload
-        _handleMediaUploadComplete(mediaType, filePath);
-        break;
-        
-      case 'media_error':
-        final error = data['error'] as String;
-        
-        // Handle media upload error
-        _handleMediaUploadError(error);
-        break;
+        switch (data['command']) {
+          case 'media_complete':
+            debugPrint('🎬 MAIN ISOLATE: ✅ Processing media_complete command');
+            final mediaType = data['media_type'] as String;
+            final filePath = data['file_path'] as String?;
+            
+            debugPrint('🎬 MAIN ISOLATE: Media type: $mediaType');
+            debugPrint('🎬 MAIN ISOLATE: File path: $filePath');
+            
+            // Handle completed media upload
+            _handleMediaUploadComplete(mediaType, filePath);
+            break;
+            
+          case 'media_error':
+            debugPrint('🎬 MAIN ISOLATE: ❌ Processing media_error command');
+            final error = data['error'] as String;
+            debugPrint('🎬 MAIN ISOLATE: Error: $error');
+            
+            // Handle media upload error
+            _handleMediaUploadError(error);
+            break;
+          
+          default:
+            debugPrint('🎬 MAIN ISOLATE: 🤔 Unknown command: ${data['command']}');
+        }
+      } else {
+        debugPrint('🎬 MAIN ISOLATE: ⚠️ No "command" field in message');
+        debugPrint('🎬 MAIN ISOLATE: Available fields: ${data.keys.toList()}');
+      }
+      
+      // Also check for action field
+      if (data.containsKey('action')) {
+        debugPrint('🎬 MAIN ISOLATE: 🔍 Found action field: ${data['action']}');
+      }
+      
+      // Check for type field
+      if (data.containsKey('type')) {
+        debugPrint('🎬 MAIN ISOLATE: 🔍 Found type field: ${data['type']}');
+      }
+      
+      debugPrint('🎬 MAIN ISOLATE: ✅ Message processed');
+    } catch (e, st) {
+      debugPrint('🎬 MAIN ISOLATE: ❌ Error processing media message: $e');
+      debugPrint('🎬 MAIN ISOLATE: ❌ Stack: $st');
     }
   });
+  
+  debugPrint('🎬 MAIN ISOLATE: ✅ Media websocket listener setup complete');
 }
 
 void _handleMediaUploadComplete(String mediaType, String? filePath) {

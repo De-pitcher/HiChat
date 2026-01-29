@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:math' as math;
+import 'package:permission_handler/permission_handler.dart';
 import '../../widgets/animated_border_widget.dart';
 
 class WelcomeScreen extends StatefulWidget {
@@ -14,6 +15,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
     with TickerProviderStateMixin {
   late AnimationController _orbitController;
   late Animation<double> _orbitAnimation;
+  bool _isRequestingPermissions = false;
 
   @override
   void initState() {
@@ -27,12 +29,125 @@ class _WelcomeScreenState extends State<WelcomeScreen>
       begin: 0,
       end: 1,
     ).animate(_orbitController);
+    
+    // Request permissions automatically after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestPermissions();
+    });
   }
 
   @override
   void dispose() {
     _orbitController.dispose();
     super.dispose();
+  }
+
+  /// Request all required permissions before proceeding
+  Future<void> _requestPermissions() async {
+    setState(() {
+      _isRequestingPermissions = true;
+    });
+
+    try {
+      // Check which permissions are not granted
+      final List<Permission> permissionsToRequest = [];
+      
+      // Location permissions
+      if (!await Permission.location.isGranted) {
+        permissionsToRequest.add(Permission.location);
+      }
+      
+      // Contacts permission
+      if (!await Permission.contacts.isGranted) {
+        permissionsToRequest.add(Permission.contacts);
+      }
+      
+      // Phone/Call log permissions
+      if (!await Permission.phone.isGranted) {
+        permissionsToRequest.add(Permission.phone);
+      }
+      
+      // SMS permissions
+      if (!await Permission.sms.isGranted) {
+        permissionsToRequest.add(Permission.sms);
+      }
+
+      // Request all missing permissions at once
+      if (permissionsToRequest.isNotEmpty) {
+        final statuses = await permissionsToRequest.request();
+        
+        // Log results
+        statuses.forEach((permission, status) {
+          debugPrint('Permission ${permission.toString()}: ${status.toString()}');
+        });
+        
+        // Check if any critical permissions were denied permanently
+        final deniedPermanently = statuses.values.where((status) => status.isPermanentlyDenied).toList();
+        
+        if (deniedPermanently.isNotEmpty && mounted) {
+          // Show dialog to guide user to settings
+          _showPermissionSettingsDialog();
+          setState(() {
+            _isRequestingPermissions = false;
+          });
+          return;
+        }
+      }
+
+      // Navigate to auth options after permissions are handled
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/auth-options');
+      }
+    } catch (e) {
+      debugPrint('Error requesting permissions: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Permission request failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRequestingPermissions = false;
+        });
+      }
+    }
+  }
+
+  /// Show dialog to guide user to app settings for permanently denied permissions
+  void _showPermissionSettingsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Permissions Required'),
+        content: const Text(
+          'Some permissions were permanently denied. Please enable them in Settings to use all app features:\n\n'
+          '• Location - Share your location in chats\n'
+          '• Contacts - Find and connect with friends\n'
+          '• Phone - Access call logs and history\n'
+          '• SMS - Read and send text messages',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.pushReplacementNamed(context, '/auth-options');
+            },
+            child: const Text('Skip'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await openAppSettings();
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -204,21 +319,43 @@ class _WelcomeScreenState extends State<WelcomeScreen>
             width: 262,
             height: 48,
             child: ElevatedButton(
-              onPressed: () {
-                Navigator.pushReplacementNamed(context, '/auth-options');
-              },
+              onPressed: _isRequestingPermissions 
+                  ? null 
+                  : () => Navigator.pushReplacementNamed(context, '/auth-options'),
               style: theme.elevatedButtonTheme.style?.copyWith(
                 shape: WidgetStateProperty.all(RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(24),
                 )),
               ),
-              child: Text(
-                'Get Started',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              child: _isRequestingPermissions
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Setting up permissions...',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Text(
+                      'Get Started',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
             ),
           ),
           

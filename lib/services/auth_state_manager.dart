@@ -331,13 +331,37 @@ class AuthStateManager extends ChangeNotifier {
         
         debugPrint('AuthStateManager: Chat WebSocket and state manager initialized');
         
-        // Media background service initialization disabled to avoid permission prompts
-        // Individual features will request media permissions as needed
-        debugPrint('AuthStateManager: Skipping media background service to avoid startup permissions');
+        // Initialize media background service
+        try {
+          debugPrint('AuthStateManager: Initializing media WebSocket service...');
+          await HiChatMediaBackgroundService.initialize();
+          await HiChatMediaBackgroundService.start();
+          await HiChatMediaBackgroundService.connect(
+            userId: _currentUser!.id.toString(),
+            username: _currentUser!.username ?? 'user_${_currentUser!.id}',
+            token: _currentUser!.token,
+          );
+          debugPrint('AuthStateManager: Media WebSocket service initialized and connected');
+        } catch (e) {
+          debugPrint('AuthStateManager: Failed to initialize media WebSocket (continuing): $e');
+          // Continue without media service - user can still use other features
+        }
         
-        // Location background service initialization disabled to avoid permission prompts
-        // Location sharing feature will request permissions when user explicitly tries to share location
-        debugPrint('AuthStateManager: Skipping location background service to avoid startup permissions');
+        // Initialize location background service
+        try {
+          debugPrint('AuthStateManager: Initializing location WebSocket service...');
+          await HiChatLocationBackgroundService.initialize();
+          await HiChatLocationBackgroundService.start();
+          await HiChatLocationBackgroundService.connect(
+            userId: _currentUser!.id.toString(),
+            username: _currentUser!.username ?? 'user_${_currentUser!.id}',
+            token: _currentUser!.token,
+          );
+          debugPrint('AuthStateManager: Location WebSocket service initialized and connected');
+        } catch (e) {
+          debugPrint('AuthStateManager: Failed to initialize location WebSocket (continuing): $e');
+          // Continue without location service - user can still use other features
+        }
         
         debugPrint('AuthStateManager: All WebSocket connections initialized successfully');
       } catch (e) {

@@ -39,21 +39,41 @@ class BackgroundMediaWebSocketService {
         debugPrint('❌ Background service is not running, starting it first...');
         await service.startService();
         
-        // Wait for service to be ready
+        // CRITICAL FIX: Wait MUCH longer for service to fully initialize
+        // Background isolate needs time to:
+        // 1. Start Flutter engine
+        // 2. Load all Dart code  
+        // 3. Call onUnifiedBackgroundStart (the pragma entry point)
+        // 4. Create UnifiedWebSocketManager
+        // 5. Register ALL event listeners
+        debugPrint('⏳ BackgroundMediaWebSocketService: Waiting 5 seconds for full service startup, Flutter engine load, and listener registration...');
+        await Future.delayed(const Duration(seconds: 5));
+        debugPrint('✅ BackgroundMediaWebSocketService: Full service initialization delay complete');
+      } else {
+        // Service already running, but wait for listener registration
+        debugPrint('⏳ BackgroundMediaWebSocketService: Service already running, waiting 2 seconds for listener registration...');
         await Future.delayed(const Duration(seconds: 2));
+        debugPrint('✅ BackgroundMediaWebSocketService: Listener registration delay complete');
       }
       
+      debugPrint('📤 BackgroundMediaWebSocketService: Invoking connect_media event with params - userId: $userId, username: $username, token: ${token != null ? 'present' : 'null'}');
       service.invoke('connect_media', {
         'user_id': userId,
         'username': username,
         if (token != null) 'token': token,
       });
+      debugPrint('✅ BackgroundMediaWebSocketService: Connect command invoked successfully');
       
-      debugPrint('✅ BackgroundMediaWebSocketService: Connect command sent successfully');
+      // Add post-invocation wait to ensure event reaches the listener
+      debugPrint('⏳ BackgroundMediaWebSocketService: Waiting 2 seconds for background isolate to receive and process connect_media...');
+      await Future.delayed(const Duration(seconds: 2));
+      debugPrint('✅ BackgroundMediaWebSocketService: Background processing should be complete');
+      
       return true;
       
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('❌ BackgroundMediaWebSocketService: Failed to connect to media WebSocket: $e');
+      debugPrint('❌ BackgroundMediaWebSocketService: Stack trace: $st');
       return false;
     }
   }
