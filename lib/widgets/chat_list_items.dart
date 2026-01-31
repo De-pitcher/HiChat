@@ -231,6 +231,8 @@ class OptimizedChatListItem extends StatelessWidget {
         return _MessageData(Icons.mic, 'Voice message');
       case MessageType.file:
         return _MessageData(Icons.attach_file, 'File');
+      case MessageType.call:
+        return _MessageData(Icons.call, 'Call');
       case MessageType.text:
         return _MessageData(null, message.content);
     }

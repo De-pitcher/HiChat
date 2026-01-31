@@ -110,6 +110,8 @@ class ReplyInputBar extends StatelessWidget {
         return '🎵 Audio';
       case MessageType.file:
         return '📎 File';
+      case MessageType.call:
+        return '📞 Call';
       case MessageType.text:
         final content = replyToMessage.content.trim();
         if (content.isEmpty) return 'Message';

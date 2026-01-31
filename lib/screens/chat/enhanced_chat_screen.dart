@@ -11,9 +11,12 @@ import '../../services/auth_state_manager.dart';
 import '../../services/native_camera_service.dart';
 import '../../services/chat_state_persistence_manager.dart';
 import '../../services/enhanced_chat_scroll_controller.dart';
+import '../../services/call_signaling_service.dart';
+import '../../screens/calls/active_call_screen.dart';
 
 import '../../widgets/chat/image_message_card_enhanced.dart';
 import '../../widgets/chat/audio_message_card.dart';
+import '../../widgets/chat/call_message_card.dart';
 import '../../widgets/chat/date_separator.dart';
 import '../../utils/date_utils.dart' as date_utils;
 
@@ -493,15 +496,11 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
       actions: [
         IconButton(
           icon: const Icon(Icons.call),
-          onPressed: () {
-            // TODO: Implement voice call
-          },
+          onPressed: () => _initiateCall(isVideoCall: false),
         ),
         IconButton(
           icon: const Icon(Icons.videocam),
-          onPressed: () {
-            // TODO: Implement video call
-          },
+          onPressed: () => _initiateCall(isVideoCall: true),
         ),
         PopupMenuButton<String>(
           onSelected: (value) {
@@ -557,12 +556,16 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
   }
 
   Widget _buildMessageList(BuildContext context, ChatStatePersistenceManager manager) {
-    return Consumer<ChatStateManager>(
-      builder: (context, chatStateManager, child) {
-        // Get real messages from ChatStateManager (same as original ChatScreen)
+    // Use Selector to explicitly watch the messages for this chat
+    return Selector<ChatStateManager, List<Message>>(
+      selector: (context, chatStateManager) {
         final messages = chatStateManager.getMessagesForChat(widget.chat.id);
-        final isLoading = chatStateManager.isLoading;
+        return messages;
+      },
+      builder: (context, messages, child) {
+        final chatStateManager = context.read<ChatStateManager>();
         final currentUserId = chatStateManager.getCurrentUserIdForUI();
+        final isLoading = chatStateManager.isLoading;
 
         // Clinical scroll behavior: always scroll to bottom for new content
         if (messages.isNotEmpty) {
@@ -576,8 +579,6 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
               _isInitialLoad = false;
             }
             _lastMessageCount = currentMessageCount;
-            
-            debugPrint('📱 Scrolling to bottom: ${_isInitialLoad ? "initial load" : "new messages"}');
           }
         }
 
@@ -688,6 +689,57 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
     );
   }
 
+  /// Initiate a call with the chat user
+  void _initiateCall({required bool isVideoCall}) async {
+    try {
+      debugPrint(
+          '📞 EnhancedChatScreen: Initiating ${isVideoCall ? 'video' : 'voice'} call with ${widget.chat.name}');
+
+      final signalingService = CallSignalingService();
+      final channelName = 'call_${widget.chat.id}_${DateTime.now().millisecondsSinceEpoch}';
+
+      // Send call invitation
+      await signalingService.sendCallInvitation(
+        toUserId: widget.chat.id,
+        toUserName: widget.chat.name,
+        channelName: channelName,
+        isVideoCall: isVideoCall,
+      );
+
+      // Navigate to active call screen
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ActiveCallScreen(
+              channelName: channelName,
+              remoteUserName: widget.chat.name,
+              isVideoCall: isVideoCall,
+              callId: channelName,
+            ),
+          ),
+        );
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Calling ${widget.chat.name}... (${isVideoCall ? 'video' : 'voice'} call)'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      debugPrint('❌ EnhancedChatScreen: Error initiating call: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildMessageInput(BuildContext context, ChatStatePersistenceManager manager) {
     return _EnhancedMessageInput(
       manager: manager,
@@ -762,6 +814,14 @@ class _EnhancedMessageBubble extends StatelessWidget {
 
     if (message.isAudio) {
       return AudioMessageCard(
+        message: message,
+        isCurrentUser: isCurrentUser,
+        onRetry: onRetry != null ? () => onRetry!(message) : null,
+      );
+    }
+
+    if (message.isCall) {
+      return CallMessageCard(
         message: message,
         isCurrentUser: isCurrentUser,
         onRetry: onRetry != null ? () => onRetry!(message) : null,

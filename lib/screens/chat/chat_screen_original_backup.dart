@@ -2844,6 +2844,8 @@ class _MessageInputState extends State<_MessageInput>
         return '🎵 Audio';
       case MessageType.file:
         return '📎 File';
+      case MessageType.call:
+        return '📞 Call';
     }
   }
 

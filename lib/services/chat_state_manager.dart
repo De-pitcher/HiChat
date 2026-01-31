@@ -983,6 +983,11 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
       case 'video': return MessageType.video;
       case 'audio': return MessageType.audio;
       case 'file': return MessageType.file;
+      case 'call_invitation': return MessageType.call;
+      case 'call_accepted': return MessageType.call;
+      case 'call_rejected': return MessageType.call;
+      case 'call_declined': return MessageType.call;
+      case 'call_ended': return MessageType.call;
       default: return MessageType.text;
     }
   }
@@ -1080,8 +1085,6 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
 
   @override
   void onMessagesReceived(List<Message> messages) {
-    debugPrint('ChatStateManager: Received ${messages.length} messages');
-    
     for (final message in messages) {
       _chatMessages.putIfAbsent(message.chatId, () => []);
       

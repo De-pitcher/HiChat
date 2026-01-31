@@ -119,6 +119,9 @@ dependencies:
   flutter_local_notifications: ^19.4.2
   flutter_background_service: ^5.1.0
   
+  # Agora SDK for real-time audio/video calling
+  agora_rtc_engine: ^6.3.0
+  
   # SMS functionality now handled by custom Android plugin
 
 dev_dependencies:

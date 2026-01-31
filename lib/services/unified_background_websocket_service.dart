@@ -44,7 +44,7 @@ class UnifiedBackgroundWebSocketService {
     // Check if we have location permissions to determine service types
     bool hasLocationPermissions = await _checkLocationPermissions();
     
-    // Initialize the background service
+    // Initialize the background service (safe call from main isolate for configuration only)
     final service = FlutterBackgroundService();
     
     // Configure notification channel

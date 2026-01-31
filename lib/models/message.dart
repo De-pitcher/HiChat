@@ -6,6 +6,7 @@ enum MessageType {
   file,
   audio,
   video,
+  call,
 }
 
 enum MessageStatus {
@@ -73,6 +74,7 @@ class Message {
   bool get isFile => type == MessageType.file;
   bool get isAudio => type == MessageType.audio;
   bool get isVideo => type == MessageType.video;
+  bool get isCall => type == MessageType.call;
 
   bool get isRead => status == MessageStatus.read;
   bool get isDelivered => status == MessageStatus.delivered;
@@ -175,6 +177,13 @@ class Message {
         return MessageType.audio;
       case 'video':
         return MessageType.video;
+      case 'call_invitation':
+      case 'call_accepted':
+      case 'call_rejected':
+      case 'call_declined':
+      case 'call_ended':
+      case 'call':
+        return MessageType.call;
       default:
         return MessageType.text;
     }

@@ -23,6 +23,7 @@ import 'screens/auth/phone_signin_screen.dart';
 import 'screens/auth/otp_verification_screen.dart';
 import 'screens/chat/chat_list_screen.dart';
 import 'screens/chat/chat_screen.dart';
+import 'screens/chat/enhanced_chat_screen.dart';
 import 'screens/camera/camera_screen.dart';
 import 'screens/location/location_sharing_screen.dart';
 import 'screens/user/user_search_screen.dart';
@@ -42,12 +43,17 @@ void main() async {
   await _initializeNotifications();
   
   // Initialize background services (configure but don't auto-start)
+  // Wrapped in try-catch to prevent isolate errors on main thread
   try {
+    // These calls safely configure background services without starting them
+    // FlutterBackgroundService initialization is deferred to when services are actually started
     await HiChatMediaBackgroundService.initialize();
     await HiChatLocationBackgroundService.initialize();
     await _setupMainIsolateCameraHandlers();
   } catch (e) {
-    debugPrint('Failed to initialize background services: $e');
+    debugPrint('⚠️ Warning: Background service initialization had issues (may be safe to ignore): $e');
+    // Don't rethrow - background services are optional for app startup
+    // They will properly initialize when explicitly started
   }
   
   runApp(const HiChatApp());
@@ -332,7 +338,7 @@ class HiChatApp extends StatelessWidget {
             case AppConstants.chatRoute:
               final chat = settings.arguments as Chat;
               return PageTransitions.slideFromRight(
-                ChatScreen(chat: chat),
+                EnhancedChatScreen(chat: chat),
                 settings: settings,
               );
 

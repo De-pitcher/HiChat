@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/chat.dart';
 import '../../services/chat_state_manager.dart';
+import '../../services/call_signaling_service.dart';
 import '../../constants/app_theme.dart';
+import '../../screens/calls/active_call_screen.dart';
 import '../online_indicator.dart';
 
 class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -212,15 +214,11 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
       ),
       IconButton(
         icon: const Icon(Icons.call),
-        onPressed: () {
-          // TODO: Implement voice call
-        },
+        onPressed: () => _initiateCall(context, isVideoCall: false),
       ),
       IconButton(
         icon: const Icon(Icons.videocam),
-        onPressed: () {
-          // TODO: Implement video call
-        },
+        onPressed: () => _initiateCall(context, isVideoCall: true),
       ),
       PopupMenuButton<String>(
         onSelected: (value) {
@@ -246,5 +244,56 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
         ],
       ),
     ];
+  }
+
+  /// Initiate a call with the chat user
+  void _initiateCall(BuildContext context, {required bool isVideoCall}) async {
+    try {
+      debugPrint(
+          '📞 ChatAppBar: Initiating ${isVideoCall ? 'video' : 'voice'} call with ${chat.name}');
+
+      final signalingService = CallSignalingService();
+      final channelName = 'call_${chat.id}_${DateTime.now().millisecondsSinceEpoch}';
+
+      // Send call invitation
+      await signalingService.sendCallInvitation(
+        toUserId: chat.id,
+        toUserName: chat.name,
+        channelName: channelName,
+        isVideoCall: isVideoCall,
+      );
+
+      // Navigate to active call screen
+      if (context.mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ActiveCallScreen(
+              channelName: channelName,
+              remoteUserName: chat.name,
+              isVideoCall: isVideoCall,
+              callId: channelName,
+            ),
+          ),
+        );
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Calling ${chat.name}... (${isVideoCall ? 'video' : 'voice'} call)'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      debugPrint('❌ ChatAppBar: Error initiating call: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }

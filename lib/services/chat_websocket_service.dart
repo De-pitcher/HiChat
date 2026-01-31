@@ -906,8 +906,6 @@ class ChatWebSocketService {
 
           // Parse the message using the standard fromJson method
           final message = Message.fromJson(messageDataForParsing);
-          
-          debugPrint('$_tag: Successfully created message: ${message.id} - ${message.content}');
           messages.add(message);
         } catch (e) {
           debugPrint('$_tag: Error parsing individual message: $e');
@@ -981,11 +979,11 @@ class ChatWebSocketService {
         }
 
         message = Message.fromJson(messageDataForParsing);
+        debugPrint('$_tag: ✅ PARSED MESSAGE - Type: ${message.type.name}, isCall: ${message.isCall}, Content starts with: ${message.content.substring(0, 50)}');
         debugPrint('$_tag: Parsed new message with sender object: ${message.content}');
       } else {
         // Parse using standard format
         message = Message.fromJson(data);
-        debugPrint('$_tag: Parsed new message with standard format: ${message.content}');
       }
       
       for (final listener in List<ChatEventListener>.from(_listeners)) {
@@ -1603,6 +1601,13 @@ class ChatWebSocketService {
         return MessageType.audio;
       case 'file':
         return MessageType.file;
+      case 'call_invitation':
+      case 'call_accepted':
+      case 'call_rejected':
+      case 'call_declined':
+      case 'call_ended':
+      case 'call':
+        return MessageType.call;
       default:
         return MessageType.text;
     }
