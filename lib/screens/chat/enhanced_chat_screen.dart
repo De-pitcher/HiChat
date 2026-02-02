@@ -495,11 +495,21 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.call),
+          icon: Icon(
+            Icons.call,
+            color: Theme.of(context).brightness == Brightness.light
+                ? AppColors.primary
+                : Colors.white,
+          ),
           onPressed: () => _initiateCall(isVideoCall: false),
         ),
         IconButton(
-          icon: const Icon(Icons.videocam),
+          icon: Icon(
+            Icons.videocam,
+            color: Theme.of(context).brightness == Brightness.light
+                ? AppColors.primary
+                : Colors.white,
+          ),
           onPressed: () => _initiateCall(isVideoCall: true),
         ),
         PopupMenuButton<String>(

@@ -122,6 +122,9 @@ dependencies:
   # Agora SDK for real-time audio/video calling
   agora_rtc_engine: ^6.3.0
   
+  # Audio playback for ringtones
+  audioplayers: ^5.2.1
+  
   # SMS functionality now handled by custom Android plugin
 
 dev_dependencies:

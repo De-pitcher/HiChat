@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/call_signaling_service.dart';
 import '../../services/agora_call_service.dart';
+import '../../services/call_audio_service.dart';
 
 /// Full-screen incoming call notification
 /// Displays caller information and allows user to accept/reject the call
@@ -27,6 +28,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
 
   final CallSignalingService _signalingService = CallSignalingService();
   final AgoraCallService _agoraService = AgoraCallService();
+  final CallAudioService _audioService = CallAudioService();
 
   bool _isProcessing = false;
 
@@ -51,6 +53,8 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
 
   @override
   void dispose() {
+    // Stop ringtone when screen closes
+    _audioService.stopRingtone();
     _pulseController.dispose();
     super.dispose();
   }
@@ -58,10 +62,8 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
   /// Play ringtone for incoming call
   void _playRingtone() {
     try {
-      debugPrint('🔔 IncomingCallScreen: Playing ringtone...');
-      // Note: Actual ringtone implementation would use a plugin like
-      // audioplayers or assets_audio_player
-      // For now, this is a placeholder
+      _audioService.playRingtone(isVideoCall: widget.invitation.isVideoCall);
+      debugPrint('🔔 IncomingCallScreen: Ringtone playing...');
     } catch (e) {
       debugPrint('❌ IncomingCallScreen: Error playing ringtone: $e');
     }
@@ -74,6 +76,10 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
     setState(() => _isProcessing = true);
 
     try {
+      // Stop ringtone and play acceptance beep
+      await _audioService.stopRingtone();
+      await _audioService.playBeep();
+      
       debugPrint('✅ IncomingCallScreen: Accepting call from ${widget.invitation.fromUserName}...');
 
       // Accept via signaling service
@@ -120,6 +126,10 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
     setState(() => _isProcessing = true);
 
     try {
+      // Stop ringtone and play rejection beep
+      await _audioService.stopRingtone();
+      await _audioService.playBeep();
+      
       debugPrint('❌ IncomingCallScreen: Rejecting call from ${widget.invitation.fromUserName}...');
 
       await _signalingService.rejectCall(

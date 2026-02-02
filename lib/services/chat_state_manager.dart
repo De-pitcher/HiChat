@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/chat.dart';
@@ -10,6 +11,7 @@ import 'chat_websocket_service.dart';
 import 'native_camera_service.dart';
 import 'enhanced_file_upload_service.dart';
 import 'local_media_cache_service.dart';
+import 'call_signaling_service.dart';
 
 /// Manages the state of chats and messages with seamless WebSocket integration
 /// This service acts as a centralized state manager that syncs with the WebSocket service
@@ -32,6 +34,11 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
   
   // Reply state management
   final Map<String, Message> _replyContext = {}; // chatId -> message being replied to
+  
+  // Incoming call stream
+  final StreamController<CallInvitation> _incomingCallController = 
+      StreamController<CallInvitation>.broadcast();
+  Stream<CallInvitation> get incomingCalls => _incomingCallController.stream;
   
   bool _isInitialized = false;
   bool _isLoading = false;
@@ -1111,6 +1118,11 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
   void onNewMessage(Message message) {
     debugPrint('ChatStateManager: New message received: ${message.content}');
     
+    // NEW: Detect incoming call invitations
+    if (message.type == MessageType.call && !_isCurrentUserSender(message)) {
+      _handleIncomingCallInvitation(message);
+    }
+    
     // Check if this might be a duplicate of an optimistic message we already added
     final messages = _chatMessages[message.chatId];
     if (messages != null) {
@@ -1448,10 +1460,47 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
     notifyListeners();
   }
 
+  /// Handle incoming call invitation
+  Future<void> _handleIncomingCallInvitation(Message message) async {
+    try {
+      final callData = jsonDecode(message.content);
+      final callType = callData['type'] ?? 'call';
+      
+      // Only handle call_invitation (not accepted/rejected/ended)
+      if (callType == 'call_invitation') {
+        // Get sender name from users map or use from call data
+        final senderName = _users[message.senderId]?.username 
+            ?? callData['from_user_name'] 
+            ?? 'User ${message.senderId}';
+        
+        final invitation = CallInvitation(
+          callId: callData['call_id'] ?? message.id,
+          fromUserId: message.senderId,
+          fromUserName: senderName,
+          channelName: callData['channel_name'] ?? 'unknown',
+          isVideoCall: callData['is_video_call'] ?? false,
+          timestamp: message.timestamp,
+        );
+        
+        // Notify listeners about incoming call
+        _incomingCallController.add(invitation);
+        debugPrint('📞 ChatStateManager: Incoming call detected from $senderName');
+      }
+    } catch (e) {
+      debugPrint('❌ ChatStateManager: Error handling call invitation: $e');
+    }
+  }
+
+  /// Check if the sender is the current user
+  bool _isCurrentUserSender(Message message) {
+    return message.senderId == _currentUserId;
+  }
+
   /// Dispose the state manager
   @override
   void dispose() {
     _chatWebSocketService.removeListener(this);
+    _incomingCallController.close();
     super.dispose();
   }
 }

@@ -979,7 +979,10 @@ class ChatWebSocketService {
         }
 
         message = Message.fromJson(messageDataForParsing);
-        debugPrint('$_tag: ✅ PARSED MESSAGE - Type: ${message.type.name}, isCall: ${message.isCall}, Content starts with: ${message.content.substring(0, 50)}');
+        final contentPreview = message.content.length > 50 
+            ? message.content.substring(0, 50) 
+            : message.content;
+        debugPrint('$_tag: ✅ PARSED MESSAGE - Type: ${message.type.name}, isCall: ${message.isCall}, Content starts with: $contentPreview');
         debugPrint('$_tag: Parsed new message with sender object: ${message.content}');
       } else {
         // Parse using standard format
