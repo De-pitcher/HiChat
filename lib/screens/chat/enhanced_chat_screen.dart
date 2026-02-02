@@ -13,6 +13,7 @@ import '../../services/chat_state_persistence_manager.dart';
 import '../../services/enhanced_chat_scroll_controller.dart';
 import '../../services/call_signaling_service.dart';
 import '../../screens/calls/active_call_screen.dart';
+import '../../screens/calls/outgoing_call_screen.dart';
 
 import '../../widgets/chat/image_message_card_enhanced.dart';
 import '../../widgets/chat/audio_message_card.dart';
@@ -707,6 +708,7 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
 
       final signalingService = CallSignalingService();
       final channelName = 'call_${widget.chat.id}_${DateTime.now().millisecondsSinceEpoch}';
+      final callId = 'call_${DateTime.now().millisecondsSinceEpoch}_${widget.chat.id}';
 
       // Send call invitation
       await signalingService.sendCallInvitation(
@@ -716,15 +718,16 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
         isVideoCall: isVideoCall,
       );
 
-      // Navigate to active call screen
+      // Navigate to outgoing call screen (waiting for answer)
       if (mounted) {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => ActiveCallScreen(
+            builder: (context) => OutgoingCallScreen(
               channelName: channelName,
               remoteUserName: widget.chat.name,
+              remoteUserId: widget.chat.id,
               isVideoCall: isVideoCall,
-              callId: channelName,
+              callId: callId,
             ),
           ),
         );

@@ -297,6 +297,40 @@ class CallSignalingService {
     }
   }
   
+  /// Cancel outgoing call (before it's answered)
+  Future<void> sendCallCancellation({
+    required String toUserId,
+    required String callId,
+  }) async {
+    try {
+      await _ensureInitialized();
+      final message = {
+        'type': 'call_cancelled',
+        'call_id': callId,
+        'from_user_id': _currentUserId,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+      
+      final toUserIdInt = int.tryParse(toUserId) ?? 0;
+      _chatWebSocketService.sendMessage(
+        chatId: toUserIdInt.toString(),
+        receiverId: toUserIdInt,
+        content: jsonEncode(message),
+        type: 'call_cancelled',
+      );
+      debugPrint('📵 CallSignalingService: Call $callId cancelled');
+      
+      _callStateController.add(CallStateChange(
+        type: CallStateType.callCancelled,
+        callId: callId,
+      ));
+    } catch (e) {
+      debugPrint('❌ CallSignalingService: Error cancelling call: $e');
+      developer.log('Cancel call error: $e', name: _tag, level: 1000);
+      rethrow;
+    }
+  }
+  
   /// End call
   Future<void> endCall(String callId, {int? durationSeconds}) async {
     try {
@@ -397,6 +431,7 @@ enum CallStateType {
   incomingCall,         // Incoming call received
   callAccepted,         // Call accepted
   callRejected,         // Call rejected
+  callCancelled,        // Call cancelled by caller
   callEnded,            // Call ended
   callMissed,           // Call missed
   error,                // Error occurred

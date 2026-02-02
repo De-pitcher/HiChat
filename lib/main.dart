@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'dart:async';
 
 import 'firebase_options.dart';
 import 'constants/app_theme.dart';
@@ -9,6 +10,7 @@ import 'constants/app_constants.dart';
 import 'services/auth_state_manager.dart';
 import 'services/chat_state_manager.dart';
 import 'services/call_notification_manager.dart';
+import 'services/call_signaling_service.dart';
 import 'services/hichat_media_background_service_integration.dart';
 import 'services/hichat_location_service_integration.dart';
 import 'services/camera_service.dart';
@@ -296,32 +298,8 @@ class HiChatApp extends StatelessWidget {
 }
 
 /// App content widget - has access to providers
-class _HiChatAppContent extends StatefulWidget {
+class _HiChatAppContent extends StatelessWidget {
   const _HiChatAppContent();
-
-  @override
-  State<_HiChatAppContent> createState() => _HiChatAppContentState();
-}
-
-class _HiChatAppContentState extends State<_HiChatAppContent> {
-  @override
-  void initState() {
-    super.initState();
-
-    // Set app context for call notifications
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      CallNotificationManager().setAppContext(context);
-
-      // Listen to incoming calls
-      final chatStateManager = context.read<ChatStateManager>();
-      chatStateManager.incomingCalls.listen((invitation) {
-        debugPrint(
-          '📞 HiChatApp: Incoming call detected, showing notification',
-        );
-        CallNotificationManager().showIncomingCallScreen(invitation);
-      });
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -331,7 +309,7 @@ class _HiChatAppContentState extends State<_HiChatAppContent> {
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.system,
       debugShowCheckedModeBanner: false,
-      home: const AuthWrapper(),
+      home: const _CallListenerWrapper(child: AuthWrapper()),
       onGenerateRoute: (settings) {
         switch (settings.name) {
           case '/':
@@ -448,6 +426,53 @@ class _HiChatAppContentState extends State<_HiChatAppContent> {
       },
       // ),
     );
+  }
+}
+
+/// Wrapper widget to listen for incoming calls - must be inside MaterialApp
+class _CallListenerWrapper extends StatefulWidget {
+  final Widget child;
+
+  const _CallListenerWrapper({required this.child});
+
+  @override
+  State<_CallListenerWrapper> createState() => _CallListenerWrapperState();
+}
+
+class _CallListenerWrapperState extends State<_CallListenerWrapper> {
+  StreamSubscription<CallInvitation>? _callSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Set up call listener after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      // Set app context for call notifications (now inside MaterialApp)
+      CallNotificationManager().setAppContext(context);
+
+      // Listen to incoming calls
+      final chatStateManager = context.read<ChatStateManager>();
+      _callSubscription = chatStateManager.incomingCalls.listen((invitation) {
+        debugPrint('📞 CallListenerWrapper: Incoming call detected, showing notification');
+        CallNotificationManager().showIncomingCallScreen(invitation);
+      });
+
+      debugPrint('✅ CallListenerWrapper: Call notification listener initialized');
+    });
+  }
+
+  @override
+  void dispose() {
+    _callSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.child;
   }
 }
 

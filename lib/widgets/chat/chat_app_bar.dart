@@ -7,6 +7,7 @@ import '../../services/chat_state_manager.dart';
 import '../../services/call_signaling_service.dart';
 import '../../constants/app_theme.dart';
 import '../../screens/calls/active_call_screen.dart';
+import '../../screens/calls/outgoing_call_screen.dart';
 import '../online_indicator.dart';
 
 class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -254,6 +255,7 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
 
       final signalingService = CallSignalingService();
       final channelName = 'call_${chat.id}_${DateTime.now().millisecondsSinceEpoch}';
+      final callId = 'call_${DateTime.now().millisecondsSinceEpoch}_${chat.id}';
 
       // Send call invitation
       await signalingService.sendCallInvitation(
@@ -263,15 +265,16 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
         isVideoCall: isVideoCall,
       );
 
-      // Navigate to active call screen
+      // Navigate to outgoing call screen (waiting for answer)
       if (context.mounted) {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => ActiveCallScreen(
+            builder: (context) => OutgoingCallScreen(
               channelName: channelName,
               remoteUserName: chat.name,
+              remoteUserId: chat.id,
               isVideoCall: isVideoCall,
-              callId: channelName,
+              callId: callId,
             ),
           ),
         );
