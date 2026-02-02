@@ -88,10 +88,11 @@ class AgoraCallService {
     _agoraEngine.registerEventHandler(
       RtcEngineEventHandler(
         onError: (err, msg) {
-          debugPrint('❌ Agora Error: $msg');
+          final errorMessage = msg.isNotEmpty ? msg : 'Error code: ${err.name} (${err.index})';
+          debugPrint('❌ Agora Error: $errorMessage');
           _callEventController.add(CallEvent(
             type: CallEventType.error,
-            message: 'Agora error: $msg',
+            message: 'Agora error: $errorMessage',
           ));
         },
         onJoinChannelSuccess: (connection, elapsed) {
