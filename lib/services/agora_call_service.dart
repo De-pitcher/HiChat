@@ -27,13 +27,24 @@ class AgoraCallService {
   int? _remoteUserId;
   
   // Event streams
-  final StreamController<CallEvent> _callEventController = StreamController<CallEvent>.broadcast();
-  Stream<CallEvent> get callEvents => _callEventController.stream;
+  StreamController<CallEvent>? _callEventController;
+  Stream<CallEvent> get callEvents {
+    _callEventController ??= StreamController<CallEvent>.broadcast();
+    return _callEventController!.stream;
+  }
   
   // Getters
   bool get isInitialized => _isInitialized;
   bool get isCallActive => _isCallActive;
   int? get remoteUserId => _remoteUserId;
+  
+  /// Safely add event to controller (recreates if closed)
+  void _addEvent(CallEvent event) {
+    _callEventController ??= StreamController<CallEvent>.broadcast();
+    if (!_callEventController!.isClosed) {
+      _callEventController!.add(event);
+    }
+  }
   
   /// Ensure Agora SDK is initialized - lazy initialization
   Future<void> _ensureInitialized() async {
@@ -70,7 +81,7 @@ class AgoraCallService {
       debugPrint('🎤 AgoraCallService: Audio enabled');
       
       _isInitialized = true;
-      _callEventController.add(CallEvent(
+      _addEvent(CallEvent(
         type: CallEventType.initialized,
         message: 'Agora SDK initialized successfully',
       ));
@@ -90,14 +101,14 @@ class AgoraCallService {
         onError: (err, msg) {
           final errorMessage = msg.isNotEmpty ? msg : 'Error code: ${err.name} (${err.index})';
           debugPrint('❌ Agora Error: $errorMessage');
-          _callEventController.add(CallEvent(
+          _addEvent(CallEvent(
             type: CallEventType.error,
             message: 'Agora error: $errorMessage',
           ));
         },
         onJoinChannelSuccess: (connection, elapsed) {
           debugPrint('✅ AgoraCallService: Joined channel successfully');
-          _callEventController.add(CallEvent(
+          _addEvent(CallEvent(
             type: CallEventType.channelJoined,
             message: 'Successfully joined channel',
           ));
@@ -106,7 +117,7 @@ class AgoraCallService {
           debugPrint('🎤 AgoraCallService: Left channel');
           _isCallActive = false;
           _remoteUserId = null;
-          _callEventController.add(CallEvent(
+          _addEvent(CallEvent(
             type: CallEventType.channelLeft,
             message: 'Left channel',
           ));
@@ -114,7 +125,7 @@ class AgoraCallService {
         onUserJoined: (connection, remoteUid, elapsed) {
           debugPrint('👤 AgoraCallService: Remote user joined: $remoteUid');
           _remoteUserId = remoteUid;
-          _callEventController.add(CallEvent(
+          _addEvent(CallEvent(
             type: CallEventType.remoteUserJoined,
             message: 'Remote user joined',
             userId: remoteUid,
@@ -123,7 +134,7 @@ class AgoraCallService {
         onUserOffline: (connection, remoteUid, reason) {
           debugPrint('👤 AgoraCallService: Remote user left: $remoteUid (reason: $reason)');
           _remoteUserId = null;
-          _callEventController.add(CallEvent(
+          _addEvent(CallEvent(
             type: CallEventType.remoteUserLeft,
             message: 'Remote user left',
             userId: remoteUid,
@@ -131,7 +142,7 @@ class AgoraCallService {
         },
         onTokenPrivilegeWillExpire: (connection, token) {
           debugPrint('⚠️ AgoraCallService: Token will expire soon');
-          _callEventController.add(CallEvent(
+          _addEvent(CallEvent(
             type: CallEventType.tokenExpiring,
             message: 'Token will expire',
           ));
@@ -214,7 +225,7 @@ class AgoraCallService {
       _isCallActive = true;
       debugPrint('✅ AgoraCallService: Call initiated successfully');
       
-      _callEventController.add(CallEvent(
+      _addEvent(CallEvent(
         type: CallEventType.callInitiated,
         message: 'Call initiated successfully',
       ));
@@ -223,7 +234,7 @@ class AgoraCallService {
     } catch (e) {
       debugPrint('❌ AgoraCallService: Failed to initiate call: $e');
       developer.log('Call initiation error: $e', name: _tag, level: 1000);
-      _callEventController.add(CallEvent(
+      _addEvent(CallEvent(
         type: CallEventType.error,
         message: 'Failed to initiate call: $e',
       ));
@@ -248,7 +259,7 @@ class AgoraCallService {
       
       debugPrint('✅ AgoraCallService: Call ended successfully');
       
-      _callEventController.add(CallEvent(
+      _addEvent(CallEvent(
         type: CallEventType.callEnded,
         message: 'Call ended',
       ));
@@ -315,7 +326,8 @@ class AgoraCallService {
       }
       
       await _agoraEngine.release();
-      await _callEventController.close();
+      // Don't close the controller - this is a singleton service that may be reused
+      // await _callEventController.close();
       
       _isInitialized = false;
       debugPrint('✅ AgoraCallService: Disposed successfully');
@@ -378,3 +390,5 @@ class CallInfo {
   
   Duration get duration => DateTime.now().difference(startTime);
 }
+
+
