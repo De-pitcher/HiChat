@@ -181,6 +181,7 @@ class Message {
       case 'call_accepted':
       case 'call_rejected':
       case 'call_declined':
+      case 'call_cancelled':
       case 'call_ended':
       case 'call':
         return MessageType.call;
