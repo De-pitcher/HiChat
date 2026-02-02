@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../services/call_signaling_service.dart';
 import '../../services/agora_call_service.dart';
 import '../../services/call_audio_service.dart';
+import 'active_call_screen.dart';
 
 /// Full-screen incoming call notification
 /// Displays caller information and allows user to accept/reject the call
@@ -100,7 +101,20 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
       if (success) {
         widget.onAccepted();
         if (mounted) {
+          // Close the incoming call dialog
           Navigator.of(context).pop();
+          
+          // Navigate to active call screen
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => ActiveCallScreen(
+                channelName: widget.invitation.channelName,
+                remoteUserName: widget.invitation.fromUserName,
+                isVideoCall: widget.invitation.isVideoCall,
+                callId: widget.invitation.callId,
+              ),
+            ),
+          );
         }
       } else {
         if (mounted) {
