@@ -207,7 +207,7 @@ class AgoraCallService {
       await _agoraEngine.joinChannel(
         token: '007eJxTYND8Eb1Js/ndNlNBBscobk3Nk7khkGfU4rd16VCiqxFFpwj4FBssUszRLY0ujVIO0NNOTRHMLY4tkA0tDc1PzRHMDM0NTH8OGzIZARoauH5oMjFAI4gswlKQWl8QnZyTm5aXmxBsaGTMwAABJmSFr', // TEMP TOKEN - for testing only!
         channelId: 'test_channel_123', // TEMP FIXED CHANNEL - for testing only!
-        uid: uid,
+        uid: 0, // TEMP: Use UID 0 to match token generation
         options: const ChannelMediaOptions(),
       );
       
