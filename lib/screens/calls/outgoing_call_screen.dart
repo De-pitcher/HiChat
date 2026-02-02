@@ -12,13 +12,13 @@ class OutgoingCallScreen extends StatefulWidget {
   final String callId;
 
   const OutgoingCallScreen({
-    Key? key,
+    super.key,
     required this.channelName,
     required this.remoteUserName,
     required this.remoteUserId,
     required this.isVideoCall,
     required this.callId,
-  }) : super(key: key);
+  });
 
   @override
   State<OutgoingCallScreen> createState() => _OutgoingCallScreenState();

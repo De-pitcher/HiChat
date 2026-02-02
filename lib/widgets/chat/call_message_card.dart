@@ -154,6 +154,8 @@ class CallMessageCard extends StatelessWidget {
       case 'call_rejected':
       case 'call_declined':
         return Colors.red;
+      case 'call_cancelled':
+        return Colors.orange;
       case 'call_ended':
         return Colors.blue;
       default:
@@ -171,6 +173,8 @@ class CallMessageCard extends StatelessWidget {
       case 'call_rejected':
       case 'call_declined':
         return 'Call declined';
+      case 'call_cancelled':
+        return 'Call cancelled';
       case 'call_ended':
         return 'Call ended';
       default:

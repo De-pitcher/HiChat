@@ -238,7 +238,12 @@ class CallSignalingService {
   }
   
   /// Accept incoming call
-  Future<void> acceptCall(String callId, {String? channelName}) async {
+  Future<void> acceptCall(
+    String callId, {
+    String? channelName,
+    String? chatId,
+    String? toUserId,
+  }) async {
     try {
       await _ensureInitialized();
       final message = {
@@ -248,13 +253,17 @@ class CallSignalingService {
         'timestamp': DateTime.now().toIso8601String(),
       };
       
+      // Send to the correct chat and user who initiated the call
+      final chatIdInt = int.tryParse(chatId ?? '0') ?? 0;
+      final receiverIdInt = int.tryParse(toUserId ?? '0') ?? 0;
+      
       _chatWebSocketService.sendMessage(
-        chatId: '0', // Use numeric string for system messages
-        receiverId: 0,
+        chatId: chatId ?? '0',
+        receiverId: receiverIdInt,
         content: jsonEncode(message),
         type: 'call_accepted',
       );
-      debugPrint('✅ CallSignalingService: Call $callId accepted');
+      debugPrint('✅ CallSignalingService: Call $callId accepted, sent to chat $chatId, user $toUserId');
       
       _callStateController.add(CallStateChange(
         type: CallStateType.callAccepted,
@@ -268,7 +277,12 @@ class CallSignalingService {
   }
   
   /// Reject incoming call
-  Future<void> rejectCall(String callId, {String reason = 'User declined'}) async {
+  Future<void> rejectCall(
+    String callId, {
+    String reason = 'User declined',
+    String? chatId,
+    String? toUserId,
+  }) async {
     try {
       await _ensureInitialized();
       final message = {
@@ -278,13 +292,16 @@ class CallSignalingService {
         'timestamp': DateTime.now().toIso8601String(),
       };
       
+      // Send to the correct chat and user who initiated the call
+      final receiverIdInt = int.tryParse(toUserId ?? '0') ?? 0;
+      
       _chatWebSocketService.sendMessage(
-        chatId: '0', // Use numeric string for system messages
-        receiverId: 0,
+        chatId: chatId ?? '0',
+        receiverId: receiverIdInt,
         content: jsonEncode(message),
         type: 'call_rejected',
       );
-      debugPrint('❌ CallSignalingService: Call $callId rejected - $reason');
+      debugPrint('❌ CallSignalingService: Call $callId rejected - $reason, sent to chat $chatId, user $toUserId');
       
       _callStateController.add(CallStateChange(
         type: CallStateType.callRejected,
@@ -386,6 +403,7 @@ class CallInvitation {
   final String channelName;
   final bool isVideoCall;
   final DateTime timestamp;
+  final String? chatId; // Chat ID to send responses to
   
   CallInvitation({
     required this.callId,
@@ -394,10 +412,11 @@ class CallInvitation {
     required this.channelName,
     required this.isVideoCall,
     required this.timestamp,
+    this.chatId,
   });
   
   @override
-  String toString() => 'CallInvitation(callId: $callId, from: $fromUserName, video: $isVideoCall)';
+  String toString() => 'CallInvitation(callId: $callId, from: $fromUserName, video: $isVideoCall, chat: $chatId)';
 }
 
 /// Call state change model

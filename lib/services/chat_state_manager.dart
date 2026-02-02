@@ -1466,7 +1466,7 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
       final callData = jsonDecode(message.content);
       final callType = callData['type'] ?? 'call';
       
-      // Only handle call_invitation (not accepted/rejected/ended)
+      // Only handle call_invitation (not accepted/rejected/ended/cancelled)
       if (callType == 'call_invitation') {
         // Get sender name from users map or use from call data
         final senderName = _users[message.senderId]?.username 
@@ -1480,11 +1480,12 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
           channelName: callData['channel_name'] ?? 'unknown',
           isVideoCall: callData['is_video_call'] ?? false,
           timestamp: message.timestamp,
+          chatId: message.chatId, // Include chat ID for responses
         );
         
         // Notify listeners about incoming call
         _incomingCallController.add(invitation);
-        debugPrint('📞 ChatStateManager: Incoming call detected from $senderName');
+        debugPrint('📞 ChatStateManager: Incoming call detected from $senderName (chat: ${message.chatId})');
       }
     } catch (e) {
       debugPrint('❌ ChatStateManager: Error handling call invitation: $e');

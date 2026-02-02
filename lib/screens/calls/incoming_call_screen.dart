@@ -82,10 +82,12 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
       
       debugPrint('✅ IncomingCallScreen: Accepting call from ${widget.invitation.fromUserName}...');
 
-      // Accept via signaling service
+      // Accept via signaling service - send to correct chat and user
       await _signalingService.acceptCall(
         widget.invitation.callId,
         channelName: widget.invitation.channelName,
+        chatId: widget.invitation.chatId,
+        toUserId: widget.invitation.fromUserId,
       );
 
       // Initialize Agora call
@@ -135,6 +137,8 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
       await _signalingService.rejectCall(
         widget.invitation.callId,
         reason: 'User declined',
+        chatId: widget.invitation.chatId,
+        toUserId: widget.invitation.fromUserId,
       );
 
       widget.onRejected();
