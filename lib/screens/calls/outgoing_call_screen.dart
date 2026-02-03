@@ -69,7 +69,6 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
           }
           setState(() {
             _isCallAccepted = true;
-            _isNavigating = true;
           });
           _navigateToActiveCall();
         } else if (stateChange.type == CallStateType.callRejected) {
@@ -100,6 +99,9 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
       debugPrint('📞 OutgoingCallScreen: Skipping navigation (mounted: $mounted, navigating: $_isNavigating)');
       return;
     }
+
+    // Set flag AFTER checks pass
+    _isNavigating = true;
 
     try {
       debugPrint('📞 OutgoingCallScreen: Call accepted, initiating Agora call...');
