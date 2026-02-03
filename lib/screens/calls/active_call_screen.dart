@@ -77,6 +77,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
           break;
 
         case CallEventType.channelLeft:
+        case CallEventType.callEnded:
         case CallEventType.error:
           if (mounted) {
             Navigator.of(context).pop();
