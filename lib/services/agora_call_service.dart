@@ -239,10 +239,6 @@ class AgoraCallService {
         return false;
       }
       
-      // Set client role (host/audience)
-      // For version 6.3.0, use default options
-      debugPrint('🎤 AgoraCallService: Client role configured');
-      
       // Setup video if it's a video call
       if (videoCall) {
         await _agoraEngine.enableVideo();
@@ -265,13 +261,20 @@ class AgoraCallService {
         return false;
       }
       
-      // Join channel with token
-      debugPrint('🎤 AgoraCallService: Joining channel with token...');
+      // Join channel with broadcaster role to enable audio/video publishing
+      debugPrint('🎤 AgoraCallService: Joining channel with token (role: broadcaster, video: $videoCall)...');
       await _agoraEngine.joinChannel(
         token: token,
         channelId: channelName,
         uid: uid,
-        options: const ChannelMediaOptions(),
+        options: ChannelMediaOptions(
+          channelProfile: ChannelProfileType.channelProfileCommunication,
+          clientRoleType: ClientRoleType.clientRoleBroadcaster,
+          publishMicrophoneTrack: true,
+          publishCameraTrack: videoCall, // Enable camera track only for video calls
+          autoSubscribeAudio: true,
+          autoSubscribeVideo: true,
+        ),
       );
       
       _isCallActive = true;
