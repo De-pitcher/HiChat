@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:http/http.dart' as http;
 import 'dart:developer' as developer;
+import '../utils/auth_manager.dart';
 
 /// Agora Call Service for handling audio/video calls
 /// Manages real-time communication using Agora SDK
@@ -11,6 +14,9 @@ class AgoraCallService {
   
   // Agora App ID - MUST be set before using service
   static const String AGORA_APP_ID = '9d6f9392e0ff44a7838c091757a70615';
+  
+  // Backend token endpoint
+  static const String TOKEN_ENDPOINT = 'https://chatcornerbackend-production.up.railway.app/api/agora/generate-token/';
   
   static final AgoraCallService _instance = AgoraCallService._internal();
   
@@ -152,6 +158,45 @@ class AgoraCallService {
     debugPrint('🎤 AgoraCallService: Event listeners registered');
   }
   
+  /// Fetch Agora RTC token from backend
+  Future<String?> _fetchAgoraToken(String channelName, int uid) async {
+    try {
+      debugPrint('🔑 AgoraCallService: Fetching token for channel: $channelName, uid: $uid');
+      
+      final authToken = await AuthManager.getAuthToken();
+      if (authToken == null) {
+        debugPrint('❌ AgoraCallService: No auth token available');
+        return null;
+      }
+      
+      final response = await http.post(
+        Uri.parse(TOKEN_ENDPOINT),
+        headers: {
+          'Authorization': 'Token $authToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'channel_name': channelName,
+          'uid': uid,
+          'role': 1, // Publisher (can send and receive)
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final token = data['token'] as String;
+        debugPrint('✅ AgoraCallService: Token fetched successfully');
+        return token;
+      } else {
+        debugPrint('❌ AgoraCallService: Token fetch failed: ${response.statusCode} - ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('❌ AgoraCallService: Error fetching token: $e');
+      return null;
+    }
+  }
+  
   /// Request call permissions (microphone and camera)
   Future<bool> requestCallPermissions({bool videoCall = false}) async {
     try {
@@ -214,11 +259,24 @@ class AgoraCallService {
         debugPrint('🎤 AgoraCallService: Video disabled for audio-only call');
       }
       
-      // Join channel
+      // Fetch Agora RTC token from backend
+      debugPrint('🔑 AgoraCallService: Fetching token from backend...');
+      final token = await _fetchAgoraToken(channelName, uid);
+      if (token == null) {
+        debugPrint('❌ AgoraCallService: Failed to fetch token');
+        _addEvent(CallEvent(
+          type: CallEventType.error,
+          message: 'Failed to fetch Agora token',
+        ));
+        return false;
+      }
+      
+      // Join channel with token
+      debugPrint('🎤 AgoraCallService: Joining channel with token...');
       await _agoraEngine.joinChannel(
-        token: '007eJxTYND8Eb1Js/ndNlNBBscobk3Nk7khkGfU4rd16VCiqxFFpwj4FBssUszRLY0ujVIO0NNOTRHMLY4tkA0tDc1PzRHMDM0NTH8OGzIZARoauH5oMjFAI4gswlKQWl8QnZyTm5aXmxBsaGTMwAABJmSFr', // TEMP TOKEN - for testing only!
-        channelId: 'test_channel_123', // TEMP FIXED CHANNEL - for testing only!
-        uid: 0, // TEMP: Use UID 0 to match token generation
+        token: token,
+        channelId: channelName,
+        uid: uid,
         options: const ChannelMediaOptions(),
       );
       
