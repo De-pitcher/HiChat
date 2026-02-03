@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../services/call_signaling_service.dart';
 import '../../services/agora_call_service.dart';
 import '../../services/auth_state_manager.dart';
+import '../../services/chat_state_manager.dart';
 import 'active_call_screen.dart';
 
 /// Screen shown when initiating a call - shows "Calling..." and waits for answer
@@ -29,6 +30,7 @@ class OutgoingCallScreen extends StatefulWidget {
 class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
   late CallSignalingService _signalingService;
   late AgoraCallService _agoraService;
+  late ChatStateManager _chatStateManager;
   bool _isCallAccepted = false;
   bool _isCallRejected = false;
 
@@ -37,12 +39,13 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
     super.initState();
     _signalingService = CallSignalingService();
     _agoraService = AgoraCallService();
+    _chatStateManager = ChatStateManager.instance;
     _listenForCallResponse();
   }
 
   /// Listen for call acceptance or rejection
   void _listenForCallResponse() {
-    _signalingService.callStateChanges.listen((stateChange) {
+    _chatStateManager.callStateChanges.listen((stateChange) {
       if (stateChange.callId != widget.callId) return;
 
       debugPrint('📞 OutgoingCallScreen: Received call state change: ${stateChange.type}');
@@ -57,6 +60,11 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
           _isCallRejected = true;
         });
         _handleCallRejected();
+      } else if (stateChange.type == CallStateType.callCancelled) {
+        // Call was cancelled by the other user
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
       }
     });
   }

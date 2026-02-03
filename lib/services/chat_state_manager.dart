@@ -40,6 +40,11 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
       StreamController<CallInvitation>.broadcast();
   Stream<CallInvitation> get incomingCalls => _incomingCallController.stream;
   
+  // Call state changes stream (for outgoing calls)
+  final StreamController<CallStateChange> _callStateController = 
+      StreamController<CallStateChange>.broadcast();
+  Stream<CallStateChange> get callStateChanges => _callStateController.stream;
+  
   bool _isInitialized = false;
   bool _isLoading = false;
   String? _currentUserId;
@@ -1460,13 +1465,13 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
     notifyListeners();
   }
 
-  /// Handle incoming call invitation
+  /// Handle incoming call messages (invitation, accepted, rejected, ended, cancelled)
   Future<void> _handleIncomingCallInvitation(Message message) async {
     try {
       final callData = jsonDecode(message.content);
       final callType = callData['type'] ?? 'call';
       
-      // Only handle call_invitation (not accepted/rejected/ended/cancelled)
+      // Handle different call message types
       if (callType == 'call_invitation') {
         // Get sender name from users map or use from call data
         final senderName = _users[message.senderId]?.username 
@@ -1486,9 +1491,43 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
         // Notify listeners about incoming call
         _incomingCallController.add(invitation);
         debugPrint('📞 ChatStateManager: Incoming call detected from $senderName (chat: ${message.chatId})');
+      } else if (callType == 'call_accepted') {
+        final callId = callData['call_id'];
+        final channelName = callData['channel_name'];
+        debugPrint('✅ ChatStateManager: Call $callId accepted');
+        
+        _callStateController.add(CallStateChange(
+          type: CallStateType.callAccepted,
+          callId: callId,
+          channelName: channelName,
+        ));
+      } else if (callType == 'call_rejected' || callType == 'call_declined') {
+        final callId = callData['call_id'];
+        debugPrint('❌ ChatStateManager: Call $callId rejected');
+        
+        _callStateController.add(CallStateChange(
+          type: CallStateType.callRejected,
+          callId: callId,
+        ));
+      } else if (callType == 'call_ended') {
+        final callId = callData['call_id'];
+        debugPrint('🔚 ChatStateManager: Call $callId ended');
+        
+        _callStateController.add(CallStateChange(
+          type: CallStateType.callEnded,
+          callId: callId,
+        ));
+      } else if (callType == 'call_cancelled') {
+        final callId = callData['call_id'];
+        debugPrint('🚫 ChatStateManager: Call $callId cancelled');
+        
+        _callStateController.add(CallStateChange(
+          type: CallStateType.callCancelled,
+          callId: callId,
+        ));
       }
     } catch (e) {
-      debugPrint('❌ ChatStateManager: Error handling call invitation: $e');
+      debugPrint('❌ ChatStateManager: Error handling call message: $e');
     }
   }
 
@@ -1502,6 +1541,7 @@ class ChatStateManager extends ChangeNotifier implements ChatEventListener {
   void dispose() {
     _chatWebSocketService.removeListener(this);
     _incomingCallController.close();
+    _callStateController.close();
     super.dispose();
   }
 }
