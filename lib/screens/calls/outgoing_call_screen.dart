@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../services/call_signaling_service.dart';
-import '../../services/agora_call_service.dart';
 import 'active_call_screen.dart';
 
 /// Screen shown when initiating a call - shows "Calling..." and waits for answer

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../services/call_signaling_service.dart';
 import '../../services/agora_call_service.dart';
 import '../../services/call_audio_service.dart';
+import '../../services/auth_state_manager.dart';
 import 'active_call_screen.dart';
 
 /// Full-screen incoming call notification
@@ -91,11 +93,27 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
         toUserId: widget.invitation.fromUserId,
       );
 
-      // Initialize Agora call
+      // Get auth token from AuthStateManager
+      final authManager = context.read<AuthStateManager>();
+      final authToken = authManager.currentUser?.token;
+      
+      if (authToken == null) {
+        debugPrint('❌ IncomingCallScreen: No auth token available');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Authentication error. Please log in again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Initialize Agora call with auth token
       final success = await _agoraService.initiateCall(
         channelName: widget.invitation.channelName,
         uid: widget.invitation.fromUserId.hashCode.abs() % 100000,
         videoCall: widget.invitation.isVideoCall,
+        authToken: authToken,
       );
 
       if (success) {

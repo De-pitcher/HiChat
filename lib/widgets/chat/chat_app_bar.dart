@@ -6,7 +6,6 @@ import '../../models/chat.dart';
 import '../../services/chat_state_manager.dart';
 import '../../services/call_signaling_service.dart';
 import '../../constants/app_theme.dart';
-import '../../screens/calls/active_call_screen.dart';
 import '../../screens/calls/outgoing_call_screen.dart';
 import '../online_indicator.dart';
 

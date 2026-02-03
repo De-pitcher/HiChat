@@ -12,7 +12,6 @@ import '../../services/native_camera_service.dart';
 import '../../services/chat_state_persistence_manager.dart';
 import '../../services/enhanced_chat_scroll_controller.dart';
 import '../../services/call_signaling_service.dart';
-import '../../screens/calls/active_call_screen.dart';
 import '../../screens/calls/outgoing_call_screen.dart';
 
 import '../../widgets/chat/image_message_card_enhanced.dart';

@@ -5,7 +5,6 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:http/http.dart' as http;
 import 'dart:developer' as developer;
-import '../utils/auth_manager.dart';
 
 /// Agora Call Service for handling audio/video calls
 /// Manages real-time communication using Agora SDK
@@ -159,15 +158,9 @@ class AgoraCallService {
   }
   
   /// Fetch Agora RTC token from backend
-  Future<String?> _fetchAgoraToken(String channelName, int uid) async {
+  Future<String?> _fetchAgoraToken(String channelName, int uid, String authToken) async {
     try {
       debugPrint('🔑 AgoraCallService: Fetching token for channel: $channelName, uid: $uid');
-      
-      final authToken = await AuthManager.getAuthToken();
-      if (authToken == null) {
-        debugPrint('❌ AgoraCallService: No auth token available');
-        return null;
-      }
       
       final response = await http.post(
         Uri.parse(TOKEN_ENDPOINT),
@@ -232,6 +225,7 @@ class AgoraCallService {
     required String channelName,
     required int uid,
     required bool videoCall,
+    required String authToken,
   }) async {
     try {
       await _ensureInitialized();
@@ -261,7 +255,7 @@ class AgoraCallService {
       
       // Fetch Agora RTC token from backend
       debugPrint('🔑 AgoraCallService: Fetching token from backend...');
-      final token = await _fetchAgoraToken(channelName, uid);
+      final token = await _fetchAgoraToken(channelName, uid, authToken);
       if (token == null) {
         debugPrint('❌ AgoraCallService: Failed to fetch token');
         _addEvent(CallEvent(
