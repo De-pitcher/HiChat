@@ -731,6 +731,7 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
       // THEN send call invitation (screen is already listening)
       debugPrint('📞 EnhancedChatScreen: Sending call invitation...');
       await signalingService.sendCallInvitation(
+        callId: callId,
         toUserId: widget.chat.id,
         toUserName: widget.chat.name,
         channelName: channelName,

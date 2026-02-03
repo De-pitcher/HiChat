@@ -193,6 +193,7 @@ class CallSignalingService {
   
   /// Send call invitation via WebSocket
   Future<void> sendCallInvitation({
+    required String callId,
     required String toUserId,
     required String toUserName,
     required String channelName,
@@ -200,7 +201,6 @@ class CallSignalingService {
   }) async {
     try {
       await _ensureInitialized();
-      final callId = _generateCallId();
       
       // Create message payload
       final message = {
@@ -254,7 +254,6 @@ class CallSignalingService {
       };
       
       // Send to the correct chat and user who initiated the call
-      final chatIdInt = int.tryParse(chatId ?? '0') ?? 0;
       final receiverIdInt = int.tryParse(toUserId ?? '0') ?? 0;
       
       _chatWebSocketService.sendMessage(
@@ -379,9 +378,6 @@ class CallSignalingService {
   }
   
   /// Generate unique call ID
-  String _generateCallId() {
-    return 'call_${DateTime.now().millisecondsSinceEpoch}_${_currentUserId?.hashCode ?? 0}';
-  }
   
   /// Dispose resources
   Future<void> dispose() async {

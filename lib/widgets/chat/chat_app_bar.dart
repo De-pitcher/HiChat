@@ -256,36 +256,45 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
       final channelName = 'call_${chat.id}_${DateTime.now().millisecondsSinceEpoch}';
       final callId = 'call_${DateTime.now().millisecondsSinceEpoch}_${chat.id}';
 
-      // Send call invitation
-      await signalingService.sendCallInvitation(
-        toUserId: chat.id,
-        toUserName: chat.name,
-        channelName: channelName,
-        isVideoCall: isVideoCall,
-      );
+      debugPrint('📞 ChatAppBar: Created call - ID: $callId, Channel: $channelName');
 
-      // Navigate to outgoing call screen (waiting for answer)
+      // Navigate to outgoing call screen FIRST (so it can listen for responses)
       if (context.mounted) {
+        debugPrint('📞 ChatAppBar: Navigating to OutgoingCallScreen...');
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => OutgoingCallScreen(
               channelName: channelName,
               remoteUserName: chat.name,
-              remoteUserId: chat.id,
+              remoteUserId: chat.id.toString(),
               isVideoCall: isVideoCall,
               callId: callId,
             ),
           ),
         );
+        debugPrint('📞 ChatAppBar: Navigation initiated');
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'Calling ${chat.name}... (${isVideoCall ? 'video' : 'voice'} call)'),
-          duration: const Duration(seconds: 2),
-        ),
+      // THEN send call invitation (screen is already listening)
+      debugPrint('📞 ChatAppBar: Sending call invitation...');
+      await signalingService.sendCallInvitation(
+        callId: callId,
+        toUserId: chat.id,
+        toUserName: chat.name,
+        channelName: channelName,
+        isVideoCall: isVideoCall,
       );
+      debugPrint('📞 ChatAppBar: Call invitation sent successfully');
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Calling ${chat.name}... (${isVideoCall ? 'video' : 'voice'} call)'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
       debugPrint('❌ ChatAppBar: Error initiating call: $e');
       if (context.mounted) {
