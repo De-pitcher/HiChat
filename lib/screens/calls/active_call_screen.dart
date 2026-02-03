@@ -28,6 +28,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   bool _isMuted = false;
   bool _isCameraDisabled = false;
   bool _isSpeakerEnabled = true;
+  bool _isNavigatingBack = false; // Flag to prevent double-pop
 
   int? _remoteUserId;
   Duration _callDuration = Duration.zero;
@@ -79,7 +80,8 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
         case CallEventType.channelLeft:
         case CallEventType.callEnded:
         case CallEventType.error:
-          if (mounted) {
+          if (mounted && !_isNavigatingBack) {
+            _isNavigatingBack = true;
             Navigator.of(context).pop();
           }
           break;
@@ -143,6 +145,8 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
   /// Handle end call
   Future<void> _endCall() async {
+    if (_isNavigatingBack) return; // Prevent multiple end calls
+    
     debugPrint('🎤 ActiveCallScreen: Ending call...');
 
     try {
@@ -156,15 +160,18 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
         durationSeconds: durationSeconds,
       );
 
-      if (mounted) {
+      if (mounted && !_isNavigatingBack) {
+        _isNavigatingBack = true;
         Navigator.of(context).pop();
       }
     } catch (e) {
       debugPrint('❌ ActiveCallScreen: Error ending call: $e');
-      if (mounted) {
+      if (mounted && !_isNavigatingBack) {
+        _isNavigatingBack = true;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: ${e.toString()}')),
         );
+        Navigator.of(context).pop();
       }
     }
   }
