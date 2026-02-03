@@ -709,36 +709,44 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
       final channelName = 'call_${widget.chat.id}_${DateTime.now().millisecondsSinceEpoch}';
       final callId = 'call_${DateTime.now().millisecondsSinceEpoch}_${widget.chat.id}';
 
-      // Send call invitation
+      debugPrint('📞 EnhancedChatScreen: Created call - ID: $callId, Channel: $channelName');
+
+      // Navigate to outgoing call screen FIRST (so it can listen for responses)
+      if (mounted) {
+        debugPrint('📞 EnhancedChatScreen: Navigating to OutgoingCallScreen...');
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => OutgoingCallScreen(
+              channelName: channelName,
+              remoteUserName: widget.chat.name,
+              remoteUserId: widget.chat.id.toString(),
+              isVideoCall: isVideoCall,
+              callId: callId,
+            ),
+          ),
+        );
+        debugPrint('📞 EnhancedChatScreen: Navigation initiated');
+      }
+
+      // THEN send call invitation (screen is already listening)
+      debugPrint('📞 EnhancedChatScreen: Sending call invitation...');
       await signalingService.sendCallInvitation(
         toUserId: widget.chat.id,
         toUserName: widget.chat.name,
         channelName: channelName,
         isVideoCall: isVideoCall,
       );
+      debugPrint('📞 EnhancedChatScreen: Call invitation sent successfully');
 
-      // Navigate to outgoing call screen (waiting for answer)
       if (mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => OutgoingCallScreen(
-              channelName: channelName,
-              remoteUserName: widget.chat.name,
-              remoteUserId: widget.chat.id,
-              isVideoCall: isVideoCall,
-              callId: callId,
-            ),
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Calling ${widget.chat.name}... (${isVideoCall ? 'video' : 'voice'} call)'),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'Calling ${widget.chat.name}... (${isVideoCall ? 'video' : 'voice'} call)'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
     } catch (e) {
       debugPrint('❌ EnhancedChatScreen: Error initiating call: $e');
       if (mounted) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/call_signaling_service.dart';
@@ -31,12 +32,15 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
   late CallSignalingService _signalingService;
   late AgoraCallService _agoraService;
   late ChatStateManager _chatStateManager;
+  StreamSubscription<CallStateChange>? _callStateSubscription;
   bool _isCallAccepted = false;
   bool _isCallRejected = false;
+  bool _isNavigating = false;
 
   @override
   void initState() {
     super.initState();
+    debugPrint('📞 OutgoingCallScreen: Initialized for call ${widget.callId}');
     _signalingService = CallSignalingService();
     _agoraService = AgoraCallService();
     _chatStateManager = ChatStateManager.instance;
@@ -45,33 +49,57 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
 
   /// Listen for call acceptance or rejection
   void _listenForCallResponse() {
-    _chatStateManager.callStateChanges.listen((stateChange) {
-      if (stateChange.callId != widget.callId) return;
-
-      debugPrint('📞 OutgoingCallScreen: Received call state change: ${stateChange.type}');
-
-      if (stateChange.type == CallStateType.callAccepted) {
-        setState(() {
-          _isCallAccepted = true;
-        });
-        _navigateToActiveCall();
-      } else if (stateChange.type == CallStateType.callRejected) {
-        setState(() {
-          _isCallRejected = true;
-        });
-        _handleCallRejected();
-      } else if (stateChange.type == CallStateType.callCancelled) {
-        // Call was cancelled by the other user
-        if (mounted) {
-          Navigator.of(context).pop();
+    debugPrint('📞 OutgoingCallScreen: Setting up call state listener for ${widget.callId}');
+    
+    _callStateSubscription = _chatStateManager.callStateChanges.listen(
+      (stateChange) {
+        debugPrint('📞 OutgoingCallScreen: Received state change - Type: ${stateChange.type}, CallId: ${stateChange.callId}, Expected: ${widget.callId}');
+        
+        if (stateChange.callId != widget.callId) {
+          debugPrint('📞 OutgoingCallScreen: Ignoring state change for different call');
+          return;
         }
-      }
-    });
+
+        debugPrint('📞 OutgoingCallScreen: Processing state change: ${stateChange.type}');
+
+        if (stateChange.type == CallStateType.callAccepted) {
+          if (_isNavigating) {
+            debugPrint('📞 OutgoingCallScreen: Already navigating, ignoring duplicate event');
+            return;
+          }
+          setState(() {
+            _isCallAccepted = true;
+            _isNavigating = true;
+          });
+          _navigateToActiveCall();
+        } else if (stateChange.type == CallStateType.callRejected) {
+          if (_isNavigating) return;
+          setState(() {
+            _isCallRejected = true;
+          });
+          _handleCallRejected();
+        } else if (stateChange.type == CallStateType.callCancelled) {
+          if (_isNavigating) return;
+          // Call was cancelled by the other user
+          if (mounted) {
+            _isNavigating = true;
+            Navigator.of(context).pop();
+          }
+        }
+      },
+      onError: (error) {
+        debugPrint('❌ OutgoingCallScreen: Stream error: $error');
+      },
+      cancelOnError: false,
+    );
   }
 
   /// Navigate to active call screen when call is accepted
   Future<void> _navigateToActiveCall() async {
-    if (!mounted) return;
+    if (!mounted || _isNavigating) {
+      debugPrint('📞 OutgoingCallScreen: Skipping navigation (mounted: $mounted, navigating: $_isNavigating)');
+      return;
+    }
 
     try {
       debugPrint('📞 OutgoingCallScreen: Call accepted, initiating Agora call...');
@@ -145,6 +173,13 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
         Navigator.of(context).pop();
       }
     }
+  }
+
+  @override
+  void dispose() {
+    debugPrint('📞 OutgoingCallScreen: Disposing, cancelling subscription');
+    _callStateSubscription?.cancel();
+    super.dispose();
   }
 
   /// Handle call rejection
