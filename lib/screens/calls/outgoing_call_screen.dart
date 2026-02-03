@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../services/call_signaling_service.dart';
+import '../../services/agora_call_service.dart';
+import '../../services/auth_state_manager.dart';
 import 'active_call_screen.dart';
 
 /// Screen shown when initiating a call - shows "Calling..." and waits for answer
@@ -25,6 +28,7 @@ class OutgoingCallScreen extends StatefulWidget {
 
 class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
   late CallSignalingService _signalingService;
+  late AgoraCallService _agoraService;
   bool _isCallAccepted = false;
   bool _isCallRejected = false;
 
@@ -32,6 +36,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
   void initState() {
     super.initState();
     _signalingService = CallSignalingService();
+    _agoraService = AgoraCallService();
     _listenForCallResponse();
   }
 
@@ -57,19 +62,81 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
   }
 
   /// Navigate to active call screen when call is accepted
-  void _navigateToActiveCall() {
+  Future<void> _navigateToActiveCall() async {
     if (!mounted) return;
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => ActiveCallScreen(
-          channelName: widget.channelName,
-          remoteUserName: widget.remoteUserName,
-          isVideoCall: widget.isVideoCall,
-          callId: widget.callId,
+    try {
+      debugPrint('📞 OutgoingCallScreen: Call accepted, initiating Agora call...');
+      
+      // Get auth token from AuthStateManager
+      final authManager = context.read<AuthStateManager>();
+      final authToken = authManager.currentUser?.token;
+      
+      if (authToken == null) {
+        debugPrint('❌ OutgoingCallScreen: No auth token available');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Authentication error. Please log in again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          Navigator.of(context).pop();
+        }
+        return;
+      }
+
+      // Calculate UID from user ID
+      final uid = authManager.currentUser!.id.hashCode.abs() % 100000;
+
+      // Initiate Agora call with auth token
+      final success = await _agoraService.initiateCall(
+        channelName: widget.channelName,
+        uid: uid,
+        videoCall: widget.isVideoCall,
+        authToken: authToken,
+      );
+
+      if (!success) {
+        debugPrint('❌ OutgoingCallScreen: Failed to initiate Agora call');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to connect to call'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          Navigator.of(context).pop();
+        }
+        return;
+      }
+
+      debugPrint('✅ OutgoingCallScreen: Agora call initiated, navigating to ActiveCallScreen');
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => ActiveCallScreen(
+            channelName: widget.channelName,
+            remoteUserName: widget.remoteUserName,
+            isVideoCall: widget.isVideoCall,
+            callId: widget.callId,
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      debugPrint('❌ OutgoingCallScreen: Error navigating to active call: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error connecting to call: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        Navigator.of(context).pop();
+      }
+    }
   }
 
   /// Handle call rejection
