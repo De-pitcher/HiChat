@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/agora_call_service.dart';
 import '../../services/call_signaling_service.dart';
@@ -33,6 +34,8 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   int? _remoteUserId;
   Duration _callDuration = Duration.zero;
   late DateTime _callStartTime;
+  
+  StreamSubscription? _agoraEventSubscription; // Track subscription
 
   @override
   void initState() {
@@ -53,28 +56,38 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
   @override
   void dispose() {
+    debugPrint('🎥 ActiveCallScreen: Disposing, cancelling event subscription');
+    _agoraEventSubscription?.cancel();
     _agoraService.dispose();
     super.dispose();
   }
 
   /// Listen to Agora events
   void _listenToAgoraEvents() {
-    _agoraService.callEvents.listen((event) {
+    _agoraEventSubscription = _agoraService.callEvents.listen((event) {
+      if (!mounted) return; // Don't process events if widget is disposed
+      
       debugPrint('🎥 ActiveCallScreen: Agora event - ${event.type}: ${event.message}');
 
       switch (event.type) {
         case CallEventType.remoteUserJoined:
-          setState(() {
-            _remoteUserId = event.userId;
-          });
-          debugPrint('👤 ActiveCallScreen: Remote user joined: $_remoteUserId');
+          if (mounted) {
+            setState(() {
+              _remoteUserId = event.userId;
+            });
+            debugPrint('👤 ActiveCallScreen: Remote user joined: $_remoteUserId');
+          }
           break;
 
         case CallEventType.remoteUserLeft:
-          setState(() {
-            _remoteUserId = null;
-          });
-          debugPrint('👤 ActiveCallScreen: Remote user left');
+          if (mounted) {
+            setState(() {
+              _remoteUserId = null;
+            });
+            debugPrint('👤 ActiveCallScreen: Remote user left - auto-ending call');
+            // Automatically end call when remote user leaves
+            _endCall();
+          }
           break;
 
         case CallEventType.channelLeft:
