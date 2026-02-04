@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import '../../services/agora_call_service.dart';
 import '../../services/call_signaling_service.dart';
 
@@ -353,11 +354,33 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
     return Container(
       color: Colors.black,
       child: _remoteUserId != null
-          ? Center(
-              child: Text(
-                'Video Stream (UID: $_remoteUserId)',
-                style: const TextStyle(color: Colors.white),
-              ),
+          ? Stack(
+              children: [
+                // Remote user's video (full screen)
+                AgoraVideoView(
+                  controller: VideoViewController.remote(
+                    rtcEngine: _agoraService.agoraEngine,
+                    canvas: VideoCanvas(uid: _remoteUserId),
+                    connection: RtcConnection(channelId: widget.channelName),
+                  ),
+                ),
+                // Local user's video (small preview in corner)
+                Positioned(
+                  top: 48,
+                  right: 16,
+                  width: 120,
+                  height: 160,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: AgoraVideoView(
+                      controller: VideoViewController(
+                        rtcEngine: _agoraService.agoraEngine,
+                        canvas: const VideoCanvas(uid: 0),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             )
           : Center(
               child: Column(

@@ -42,6 +42,7 @@ class AgoraCallService {
   bool get isInitialized => _isInitialized;
   bool get isCallActive => _isCallActive;
   int? get remoteUserId => _remoteUserId;
+  RtcEngine get agoraEngine => _agoraEngine; // Expose engine for video views
   
   /// Safely add event to controller (recreates if closed)
   void _addEvent(CallEvent event) {
